@@ -16,10 +16,16 @@
     <title>Referee</title>
     <script src="ref-sandbox.js"></script>
     <script>
-      // This phone picked the classic layout: open that instead (see switchLayout).
+      /* The classic layout (ref-classic.html) is turned off: no way in, and a phone that
+         had picked it comes here. Set this to true to offer it again. */
+      const CLASSIC_LAYOUT = false;
       try {
         if (localStorage.getItem('ref.ui') === 'classic') {
-          location.replace('ref-classic.html' + location.search + location.hash);
+          if (CLASSIC_LAYOUT) {
+            location.replace('ref-classic.html' + location.search + location.hash);
+          } else {
+            localStorage.removeItem('ref.ui');
+          }
         }
       } catch (e) {}
     </script>
@@ -1849,9 +1855,11 @@
             : '') +
           (court.matches.length ? '' : '<p class="muted">Nothing scheduled on this court.</p>') +
           (error ? `<div class="err">${esc(error)}</div>` : '') +
-          `<p style="text-align:center;margin-top:28px">
+          (CLASSIC_LAYOUT
+            ? `<p style="text-align:center;margin-top:28px">
       <button class="iconbtn" style="width:auto;padding:0 16px;font:inherit;font-size:14px" onclick="switchLayout()">
-        Switch to the classic layout (bigger buttons)</button></p>`;
+        Switch to the classic layout (bigger buttons)</button></p>`
+            : '');
       }
 
       function scoreLabel(m) {
@@ -2061,8 +2069,12 @@
         <div class="sub">${esc(match.pool)} · ${format}</div>
       </div>
       ${call ? `<div class="call">${call}</div>` : ''}
-      <button class="iconbtn" style="width:auto;padding:0 12px;font:inherit;font-size:13px;flex:none"
-        aria-label="Switch to the classic layout" onclick="switchLayout()">Classic</button>
+      ${
+        CLASSIC_LAYOUT
+          ? `<button class="iconbtn" style="width:auto;padding:0 12px;font:inherit;font-size:13px;flex:none"
+        aria-label="Switch to the classic layout" onclick="switchLayout()">Classic</button>`
+          : ''
+      }
     </div>`;
       }
 
