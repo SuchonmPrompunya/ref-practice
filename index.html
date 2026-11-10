@@ -294,9 +294,8 @@
       body.practice #practice {
         display: flex;
         flex-direction: column;
-        /* Exactly the screen, so the picture stays in view while the ref taps below it. */
-        height: 100dvh;
-        min-height: 560px;
+        /* Taller than the screen: the ref page below gets a whole screen of its own, and
+           scrolling past its bottom carries on down the page, so none of it is cut off. */
       }
       .pbar {
         display: flex;
@@ -360,8 +359,48 @@
         background: var(--navy);
         color: #fff;
       }
-      .pswitch .short {
+      .pbar .short {
         display: none;
+      }
+      .pbar .short svg {
+        width: 18px;
+        height: 18px;
+      }
+      .pbar .picon {
+        flex: none;
+        width: 38px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .picon svg {
+        width: 20px;
+        height: 20px;
+      }
+      .picon .shrink,
+      body.refonly .picon .grow {
+        display: none;
+      }
+      body.refonly .picon .shrink {
+        display: inline;
+      }
+      /* Ref page only: no monitor or stream, and the ref page fills what's left. */
+      body.refonly .pscreen,
+      body.refonly .pswitch {
+        display: none;
+      }
+      body.refonly.practice #practice {
+        height: 100dvh;
+      }
+      body.refonly #practice .pref {
+        flex: 1;
+        height: auto;
+        min-height: 0;
+      }
+      /* The title takes the room the switch leaves. */
+      body.refonly .pbar .ptitle {
+        display: block;
       }
       /* A phone: still one line, without the title and with shorter words. */
       @media (max-width: 599px) {
@@ -384,11 +423,18 @@
           font-size: 13px;
           white-space: nowrap;
         }
-        .pswitch .long {
+        .pbar .long {
           display: none;
         }
-        .pswitch .short {
-          display: inline;
+        .pbar .short {
+          display: inline-flex;
+        }
+        #pRestart {
+          width: 38px;
+          padding: 0;
+          justify-content: center;
+          align-items: center;
+          display: inline-flex;
         }
       }
       .pscreen .frame {
@@ -396,8 +442,9 @@
         border-radius: 8px;
       }
       #practice .pref {
-        flex: 1;
-        min-height: 0;
+        /* As tall as a phone's screen, like the ref page on its own. */
+        height: 100dvh;
+        min-height: 480px;
         display: flex;
         width: 100%;
         max-width: 480px;
@@ -494,7 +541,42 @@
           </button>
         </div>
         <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
-        <button onclick="startOver()">Start over</button>
+        <button id="pRestart" onclick="startOver()" title="Start over" aria-label="Start over">
+          <span class="long">Start over</span
+          ><span class="short"
+            ><svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+              <path d="M3 3v5h5" /></svg
+          ></span>
+        </button>
+        <button
+          id="pFull"
+          class="picon"
+          onclick="refOnly()"
+          title="Ref page only"
+          aria-label="Ref page only"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path class="grow" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            <path class="shrink" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          </svg>
+        </button>
       </div>
       <section class="pscreen" id="pScreen"></section>
       <section class="pref" id="pRef"></section>
@@ -1732,6 +1814,23 @@
         sendMonitor();
       });
       /* ─────────────── ref practice ─────────────── */
+      // The ref page on its own, the whole screen, as at the court; again to bring the
+      // monitor and stream back.
+      function refOnly() {
+        const on = document.body.classList.toggle('refonly');
+        const label = on ? 'Show the monitor and stream' : 'Ref page only';
+        $('pFull').title = label;
+        $('pFull').setAttribute('aria-label', label);
+        window.scrollTo(0, 0);
+        for (const frame of document.querySelectorAll('#practice iframe')) {
+          try {
+            frame.contentWindow.dispatchEvent(new Event('resize'));
+          } catch {
+            // Not loaded yet: it measures itself when it is.
+          }
+        }
+      }
+
       function showScreen(name) {
         $('liveBox').hidden = name !== 'live';
         $('monitorBox').hidden = name !== 'monitor';

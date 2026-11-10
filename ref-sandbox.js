@@ -7,6 +7,12 @@ if (new URLSearchParams(location.search).has('sandbox')) {
   Object.defineProperty(window, 'localStorage', { get: () => sessionStorage });
   sessionStorage.setItem('ref.pw.demo', 'preview');
 
+  // On a phone the ref page keeps a scroll to itself; here, past its bottom, the
+  // practice page around it carries on scrolling.
+  const scrollOn = document.createElement('style');
+  scrollOn.textContent = 'html, body { overscroll-behavior: auto !important; }';
+  document.head.append(scrollOn);
+
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input, options = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url, location.href);
