@@ -1738,15 +1738,16 @@
           ? photo
           : `/api/static/player-photos/${encodeURIComponent(photo)}`;
       }
-      /* A round face: the player's photo over their initials, which show through if
-   there's no photo or it fails to load. */
+      /* A round face: the player's photo, or their initials if there's no photo or it
+   fails to load. The initials stay hidden while a photo loads, or their colour
+   shows through the see-through cut-out until it's in. */
       function face(name, photo) {
         const img = photo
           ? `<img src="${esc(photoUrl(photo))}" alt="" loading="lazy" ${
               /\.jpe?g$/i.test(photo) ? 'class="flat"' : ''
-            } onload="this.parentNode.classList.add('has')" onerror="this.remove()">`
+            } onerror="this.parentNode.classList.remove('has'); this.remove()">`
           : '';
-        return `<span class="face">${badge(name)}${img}</span>`;
+        return `<span class="face${img ? ' has' : ''}">${badge(name)}${img}</span>`;
       }
       function faces(players, team) {
         const list = (players || []).slice(0, 2);
