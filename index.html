@@ -291,11 +291,18 @@
       #practice {
         display: none;
       }
+      /* Exactly the screen and pinned there: the page itself never scrolls, only the ref
+         page inside it does, the same in every browser. */
+      html:has(body.practice),
+      body.practice {
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
       body.practice #practice {
+        position: fixed;
+        inset: 0;
         display: flex;
         flex-direction: column;
-        /* Taller than the screen: the ref page below gets a whole screen of its own, and
-           scrolling past its bottom carries on down the page, so none of it is cut off. */
       }
       .pbar {
         display: flex;
@@ -390,14 +397,6 @@
       body.refonly .pswitch {
         display: none;
       }
-      body.refonly.practice #practice {
-        height: 100dvh;
-      }
-      body.refonly #practice .pref {
-        flex: 1;
-        height: auto;
-        min-height: 0;
-      }
       /* The title takes the room the switch leaves. */
       body.refonly .pbar .ptitle {
         display: block;
@@ -442,14 +441,14 @@
         border-radius: 8px;
       }
       #practice .pref {
-        /* As tall as a phone's screen, like the ref page on its own. */
-        height: 100dvh;
-        min-height: 480px;
+        /* Down to the bottom of the screen; the ref page scrolls inside it. */
+        flex: 1;
+        min-height: 0;
         display: flex;
         width: 100%;
         max-width: 480px;
-        margin: 10px auto 0;
-        padding: 0 12px env(safe-area-inset-bottom);
+        margin: 8px auto 0;
+        padding: 0 8px env(safe-area-inset-bottom);
       }
       .pref .phone {
         flex: 1;
