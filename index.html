@@ -341,9 +341,12 @@
         margin: 0 auto;
         padding: 8px 12px 0;
       }
+      .pbar {
+        flex-wrap: wrap;
+      }
       .pswitch {
         display: flex;
-        margin-bottom: 8px;
+        flex: 0 1 420px;
         border: 1px solid var(--line);
         border-radius: 10px;
         overflow: hidden;
@@ -356,6 +359,13 @@
       .pswitch button.on {
         background: var(--navy);
         color: #fff;
+      }
+      /* Too narrow for one line (a phone): the switch takes the second line, full width. */
+      @media (max-width: 599px) {
+        .pswitch {
+          order: 1;
+          flex-basis: 100%;
+        }
       }
       .pscreen .frame {
         width: 100%;
@@ -452,17 +462,16 @@
           <b>Ref practice</b>
           <small>Made-up matches. Nothing is saved.</small>
         </div>
-        <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
-        <button onclick="startOver()">Start over</button>
-      </div>
-      <section class="pscreen" id="pScreen">
         <div class="pswitch" role="tablist">
           <button data-screen="monitor" class="on" onclick="showScreen('monitor')">
             Court monitor
           </button>
           <button data-screen="live" onclick="showScreen('live')">Live viewers</button>
         </div>
-      </section>
+        <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
+        <button onclick="startOver()">Start over</button>
+      </div>
+      <section class="pscreen" id="pScreen"></section>
       <section class="pref" id="pRef"></section>
     </div>
 
