@@ -1,0 +1,231 @@
+/* The players' setup, shared by both referee layouts: the whole screen, with big
+   buttons for someone who has never seen the app, at arm's length. */
+.tosspage {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #fff;
+  color: #0b1530;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+.tosstop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.tossback {
+  flex: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(30, 58, 138, 0.2);
+  background: #fff;
+  color: #0b1530;
+  cursor: pointer;
+}
+.tossvs {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 13px;
+  color: #44506b;
+  overflow-wrap: anywhere;
+}
+.tossmain {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* What's been decided: above the buttons on a phone, beside them with the room for it. */
+.tosslog {
+  order: -1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(30, 58, 138, 0.2);
+  border-radius: 12px;
+  background: #f4f6fb;
+}
+.tosslog .tossline {
+  font-size: 16px;
+  text-align: left;
+}
+@media (min-width: 700px) {
+  .tossmain {
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+  }
+  .tossmain .tossbody {
+    align-self: stretch;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .tosslog {
+    order: 0;
+    width: 280px;
+  }
+}
+.tossbody {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+.tossbody h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.tossbody h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #44506b;
+  font-weight: 700;
+}
+.tosshint {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 16px;
+  color: #44506b;
+}
+.tossgroup {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tossbig {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid rgba(30, 58, 138, 0.25);
+  background: #f4f6fb;
+  color: #0b1530;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.tossbig:active,
+.tossface:active {
+  background: #dfe6f6;
+}
+.tossfaces {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: stretch;
+  margin: 8px 0;
+}
+.tossface {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 8px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid rgba(30, 58, 138, 0.25);
+  background: #f4f6fb;
+  color: #0b1530;
+  cursor: pointer;
+}
+.tosscoin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  font-size: 38px;
+  font-weight: 800;
+  color: #5b3f08;
+  background: radial-gradient(circle at 35% 30%, #fbe39a, #c8912a);
+}
+.tosscoin.huge {
+  width: 160px;
+  height: 160px;
+  font-size: 72px;
+}
+.tosscoin.spin {
+  animation: tossflip 2.5s ease-out;
+}
+@keyframes tossflip {
+  from {
+    transform: rotateY(0);
+  }
+  to {
+    transform: rotateY(3960deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tosscoin.spin {
+    animation: none;
+  }
+}
+.tosswin {
+  margin: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.tossline {
+  margin: 0;
+  text-align: center;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.tossbig.here {
+  border-color: #12306b;
+  background: #dfe7f7;
+}
+.tossgo {
+  width: 100%;
+  min-height: 64px;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1d3f86, #12306b);
+  color: #fff;
+  cursor: pointer;
+}
+.tossagain {
+  flex: none;
+  align-self: center;
+  font: inherit;
+  font-size: 14px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: #44506b;
+  text-decoration: underline;
+  cursor: pointer;
+}

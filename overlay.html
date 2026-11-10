@@ -1,0 +1,1971 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Scoreboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* A Browser source in OBS: nothing here but the board, on a clear background.
+     Sized in vw so it holds together at any source size; 1vw is 19.2px at 1920. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      /* Where it sits and how big comes from the server (dragged on overlay-preview.html);
+         everything inside is in em, so it all scales with its width. */
+      .board {
+        --left: 0vw;
+        --bottom: 2vw;
+        --width: 52vw;
+        position: fixed;
+        left: var(--left);
+        bottom: var(--bottom);
+        width: var(--width);
+        aspect-ratio: 2000 / 667;
+        font-size: calc(var(--width) / 52);
+        font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+        color: #0f2352;
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      .board.on {
+        opacity: 1;
+      }
+      .board img,
+      .board canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .board canvas {
+        display: none;
+      }
+      /* The moving art takes over from the still one once it's drawing. */
+      .board.moving img {
+        visibility: hidden;
+      }
+      .board.moving canvas {
+        display: block;
+      }
+
+      .brand {
+        position: absolute;
+        left: 13%;
+        top: 24.5%;
+        font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+        font-weight: 600;
+        font-size: 2.3em;
+        line-height: 1;
+        letter-spacing: 0.04em;
+        color: #fff;
+      }
+
+      .row {
+        position: absolute;
+        left: 10.9%;
+        width: 49%;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 1.8em 0.9em 1.6em 3.6em;
+        padding-left: 0.8em;
+        align-items: center;
+      }
+      #row1 {
+        top: 40.3%;
+        height: 14.6%;
+      }
+      #row2 {
+        top: 55.3%;
+        height: 15.1%;
+      }
+
+      /* Next to the serving team's score, which serve it's on: one dot for the first
+         server, two for the second. Singles and rally scoring only ever have the one. */
+      .dots {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.2em;
+        padding-right: 0.15em;
+      }
+      .dot {
+        width: 0.6em;
+        height: 0.6em;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #fbe39a, #c8912a);
+        box-shadow: 0 0 0.3em rgba(200, 145, 42, 0.7);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .row.serving .dot {
+        opacity: 1;
+      }
+      .dot + .dot {
+        display: none;
+      }
+      .row.second-serve .dot + .dot {
+        display: block;
+      }
+
+      .name {
+        font-size: 1.6em;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .games {
+        font-size: 1.2em;
+        font-weight: 600;
+        text-align: right;
+      }
+      .tick {
+        justify-self: center;
+        width: 0.12em;
+        height: 62%;
+        background: linear-gradient(#f3d27a, #b98324);
+      }
+      .score {
+        font-size: 2.6em;
+        font-weight: 800;
+        line-height: 1;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .score.bump {
+        animation: bump 0.45s ease-out;
+      }
+      @keyframes bump {
+        0% {
+          transform: scale(1);
+          color: #0f2352;
+        }
+        35% {
+          transform: scale(1.3);
+          color: #b98324;
+        }
+        100% {
+          transform: scale(1);
+          color: #0f2352;
+        }
+      }
+      /* Best of one: there's no count of games to show. */
+      .board.single .games,
+      .board.single .tick {
+        visibility: hidden;
+      }
+
+      .caption {
+        position: absolute;
+        left: 13%;
+        top: 73.5%;
+        font-size: 0.95em;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #fff;
+        text-shadow:
+          0 0 0.4em rgba(5, 15, 45, 0.9),
+          0 0.05em 0.15em rgba(5, 15, 45, 0.9);
+      }
+      /* The full graphics. Nothing sits on the picture as a panel: it darkens just behind the
+     words, the players dissolve into that at the waist, and the words are set straight
+     on it. Gold only for fine lines and small things. The scoreboard's ribbon comes in
+     from the edges. 1em is 1% of the picture's width. */
+      :root {
+        --ivory: #f5f0e6;
+        --gold: #d8c08f;
+        --gold2: #a98f5a;
+        --ink: #050a1e;
+      }
+      .graphic {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        font-size: 1vw;
+        font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+        color: var(--ivory);
+        text-align: center;
+        opacity: 0;
+        visibility: hidden;
+        transition:
+          opacity 0.8s ease-in-out,
+          visibility 0s 0.8s;
+      }
+      .graphic.on {
+        opacity: 1;
+        visibility: visible;
+        transition:
+          opacity 0.35s,
+          visibility 0s;
+      }
+      /* Going away: the players and the words sink first, then the rest fades after them. */
+      .graphic:not(.on) > .flow,
+      .graphic:not(.on) > .tv {
+        animation: leave 0.5s ease-in both;
+      }
+      @keyframes leave {
+        from {
+          opacity: 1;
+          transform: none;
+        }
+        to {
+          opacity: 0;
+          transform: translateY(1.2em);
+        }
+      }
+      /* A soft pool of shadow behind the words, rising only a little above them, with no
+     edges or corners to read as a panel. */
+      .gcopy {
+        position: relative;
+      }
+      .gcopy::before,
+      .veil {
+        background: radial-gradient(
+          ellipse farthest-side at 50% 100%,
+          rgba(5, 10, 30, 0.94) 0,
+          rgba(5, 10, 30, 0.9) 58%,
+          rgba(5, 10, 30, 0.6) 76%,
+          rgba(5, 10, 30, 0.22) 90%,
+          transparent 100%
+        );
+      }
+      .gcopy::before {
+        content: '';
+        position: absolute;
+        z-index: -1;
+        left: -15%;
+        right: -15%;
+        top: -7em;
+        bottom: -3em;
+      }
+      /* The coin toss's stays put from one moment to the next, so it can't follow the words. */
+      .veil {
+        position: absolute;
+        left: 10%;
+        right: 10%;
+        bottom: 0;
+        height: 21em;
+      }
+      /* The ribbon itself, cut from the scoreboard's moving art as it's drawn. */
+      .wing {
+        position: absolute;
+        bottom: -3em;
+        width: 44em;
+        height: 29em;
+        opacity: 0.6;
+        pointer-events: none;
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 75%);
+        mask-image: linear-gradient(90deg, transparent, #000 75%);
+      }
+      .wing.left {
+        left: -8em;
+        transform: scaleX(-1);
+      }
+      .wing.right {
+        right: -8em;
+      }
+
+      /* The players stand over the words, however many lines of them there are. */
+      .flow {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 3em;
+        display: flex;
+        flex-direction: column;
+      }
+      .flow.tight {
+        bottom: 1.7em;
+      }
+      .gcast {
+        --tall: 31em;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 2.4em;
+        padding: 0 12em;
+        margin-bottom: -2em;
+      }
+      .gcast.small {
+        --tall: 20em;
+      }
+      .gcast.mid {
+        --tall: 26em;
+      }
+      .gcast.solo {
+        --tall: 34em;
+        padding: 0 26em;
+      }
+      .gside {
+        display: grid;
+        grid-template-columns: repeat(var(--count), minmax(0, 1fr));
+        align-items: end;
+      }
+      .gfig {
+        min-width: 0;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        animation-delay: calc(var(--order) * 60ms + 100ms);
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(5%);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .gfig img {
+        flex: none;
+        height: var(--tall);
+        -webkit-mask-image: linear-gradient(to top, transparent 0, #000 16%);
+        mask-image: linear-gradient(to top, transparent 0, #000 16%);
+      }
+      /* The original photo, used where the cut-out didn't work: it can't stand on its own. */
+      .gfig img.flat {
+        width: calc(var(--tall) * 0.66);
+        object-fit: cover;
+        object-position: 50% 0;
+      }
+      .gfig b {
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 8em;
+        height: 8em;
+        margin-bottom: 9em;
+        border-radius: 50%;
+        border: 0.06em solid var(--gold);
+        background: rgba(5, 10, 30, 0.55);
+        font-weight: 400;
+      }
+      .gfig b span {
+        font-size: 3em;
+        letter-spacing: 0.08em;
+      }
+
+      .cap {
+        font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+        font-size: 0.95em;
+        font-weight: 600;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        color: var(--gold);
+      }
+      .rule {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.1em;
+        width: 56em;
+        margin: 1.1em auto;
+      }
+      /* At least a pixel: any thinner, and it can round away to nothing depending on where it lands. */
+      .rule::before,
+      .rule::after {
+        content: '';
+        flex: 1;
+        height: max(1px, 0.05em);
+      }
+      .rule::before {
+        background: linear-gradient(90deg, transparent, var(--gold));
+      }
+      .rule::after {
+        background: linear-gradient(90deg, var(--gold), transparent);
+      }
+      .star {
+        width: 0.9em;
+        height: 0.9em;
+        fill: var(--gold);
+        flex: none;
+      }
+      .gname {
+        font-size: 4.4em;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        line-height: 1.05;
+        text-transform: uppercase;
+        overflow-wrap: anywhere;
+      }
+      .gname em {
+        font-weight: 400;
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--gold);
+        padding: 0 0.04em;
+      }
+      .say {
+        font-size: 2.7em;
+        font-style: italic;
+        font-weight: 400;
+        line-height: 1.15;
+        letter-spacing: 0.01em;
+        color: var(--gold);
+      }
+
+      /* Who's meeting whom. */
+      .gmatchup {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 2em;
+        width: 84em;
+        margin: 0 auto;
+      }
+      .gmatchup .gname {
+        font-size: 3.5em;
+      }
+      .gmatchup .say {
+        font-size: 2.2em;
+      }
+
+      /* The player cards: two quiet columns. */
+      .gteams {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        column-gap: 6em;
+        width: 84em;
+        margin: 0 auto;
+      }
+      .gteams .gname {
+        font-size: 2.6em;
+      }
+      .gpair {
+        display: grid;
+        grid-template-columns: repeat(var(--count), minmax(0, 1fr));
+        margin-top: 0.7em;
+      }
+      .gcell {
+        font-size: 1.7em;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        line-height: 1.1;
+      }
+      .gcell small {
+        display: block;
+        margin-top: 0.35em;
+        font:
+          600 0.5em 'Plus Jakarta Sans',
+          'Segoe UI',
+          sans-serif;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--gold);
+      }
+      .gstat {
+        margin: 0.9em 0 0.35em;
+        font:
+          600 0.85em 'Plus Jakarta Sans',
+          'Segoe UI',
+          sans-serif;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: #bfc3cf;
+      }
+      .gstat b {
+        font-weight: 600;
+        color: var(--gold);
+      }
+      .gpast {
+        text-align: left;
+      }
+      .gpastrow {
+        display: grid;
+        grid-template-columns: 1.5em minmax(0, 1fr) auto;
+        column-gap: 0.5em;
+        padding: 0.22em 0;
+        font-size: 1.3em;
+        font-weight: 500;
+        font-variant-numeric: lining-nums;
+        border-top: 0.04em solid rgba(216, 192, 143, 0.25);
+      }
+      .gpastrow b {
+        font-weight: 500;
+        font-style: italic;
+        color: #8c91a1;
+      }
+      .gpastrow b.won {
+        color: var(--gold);
+      }
+      .gpastrow span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* Their own score stands out, won or lost; the other side's sits back. */
+      .gpastrow small {
+        font-size: 1em;
+        color: #7f8496;
+      }
+      .gpastrow small strong {
+        font-weight: 600;
+        color: #fff;
+      }
+
+      /* The winners. */
+      .gbig {
+        font-size: 6.4em;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        line-height: 1;
+        text-transform: uppercase;
+        overflow-wrap: anywhere;
+      }
+      .gbig em {
+        font-weight: 400;
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--gold);
+        padding: 0 0.03em;
+      }
+      .gscores {
+        margin-top: 0.25em;
+        font-size: 3em;
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        font-variant-numeric: lining-nums;
+      }
+      .gscores i {
+        font-style: normal;
+        color: var(--gold);
+        padding: 0 0.6em;
+        font-size: 0.6em;
+        vertical-align: 0.2em;
+      }
+
+      /* The order of play: what's on after the match above it. */
+      .gorder {
+        width: 62em;
+        margin: 1em auto 0;
+      }
+      .grow {
+        display: grid;
+        grid-template-columns: 4em minmax(0, 1fr) 2em minmax(0, 1fr) 6em;
+        align-items: baseline;
+        padding: 0.24em 0;
+        font-size: 1.45em;
+        font-weight: 500;
+        font-variant-numeric: lining-nums;
+        border-top: 0.04em solid rgba(216, 192, 143, 0.25);
+      }
+      .grow span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: left;
+      }
+      .grow .gwhen {
+        color: var(--gold);
+      }
+      .grow .gleft {
+        text-align: right;
+      }
+      .grow i {
+        color: var(--gold);
+      }
+      .grow small {
+        font:
+          600 0.55em 'Plus Jakarta Sans',
+          'Segoe UI',
+          sans-serif;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #bfc3cf;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* The coin toss, shot like a TV show: one big moment at a time. The picture stays dark
+     between moments, and only whoever's in them changes. */
+      .tv {
+        position: absolute;
+        inset: 0;
+        animation: tvin 0.2s ease-out both;
+      }
+      @keyframes tvin {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .tvstage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 11em;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 3em;
+      }
+      .tvstage .gcast {
+        --tall: 34em;
+        display: flex;
+        gap: 1em;
+        padding: 0;
+        margin: 0;
+      }
+      .tvstage .gside {
+        display: flex;
+        align-items: flex-end;
+      }
+      .tvcopy {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 3em;
+      }
+      /* The player who called the coin moves over from the middle to make room for it:
+     half the coin and the gap, which is how far the row's centre shifted. */
+      .tv .gfig {
+        animation-duration: 0.3s;
+        animation-delay: 0s;
+      }
+      .tv.tvcarry {
+        animation: none;
+      }
+      .tvslide .gfig {
+        animation: tvslide 0.5s cubic-bezier(0.3, 0.9, 0.3, 1) both;
+      }
+      @keyframes tvslide {
+        from {
+          transform: translateX(8.5em);
+        }
+        to {
+          transform: none;
+        }
+      }
+      .tvstill .gfig {
+        animation: none;
+      }
+      .tvface {
+        font-size: 6.4em;
+        font-weight: 400;
+        letter-spacing: 0.34em;
+        margin-right: -0.34em;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+      .tvcopy .say {
+        animation: pickin 0.2s ease-out both;
+      }
+      @keyframes pickin {
+        from {
+          opacity: 0;
+          transform: translateY(0.2em);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      /* The coin: a thin struck disc. */
+      .tvcoinbox {
+        margin-bottom: 4em;
+        perspective: 40em;
+      }
+      .tvcoin {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 14em;
+        height: 14em;
+        border-radius: 50%;
+        color: #27345c;
+        background: linear-gradient(135deg, #f4f6fc, #c9d6f2 38%, #a3b4dc 62%, #e6e0f8);
+        box-shadow: 0 1.2em 2.6em rgba(0, 0, 0, 0.5);
+      }
+      .tvcoin::before {
+        content: '';
+        position: absolute;
+        inset: 0.7em;
+        border-radius: 50%;
+        border: 0.05em solid rgba(39, 52, 92, 0.5);
+      }
+      .tvcoin span {
+        font-size: 7em;
+        font-weight: 500;
+        line-height: 1;
+      }
+      .tvcoin .star {
+        width: 3em;
+        height: 3em;
+        fill: #27345c;
+      }
+      .tvcoin.spin {
+        animation: coinspin 0.4s linear infinite;
+      }
+      .tvcoin.landed {
+        animation: coinland 0.9s cubic-bezier(0.2, 1, 0.4, 1) both;
+      }
+      @keyframes coinspin {
+        from {
+          transform: rotateY(0);
+        }
+        to {
+          transform: rotateY(360deg);
+        }
+      }
+      @keyframes coinland {
+        from {
+          transform: rotateY(900deg);
+        }
+        to {
+          transform: none;
+        }
+      }
+      /* The coin lands beside the player and holds a moment, then gives way to whoever won. */
+      .tvfirst {
+        animation: tvout 0.35s 3s ease-in both;
+      }
+      .tvthen {
+        animation: tvback 0.5s 3.3s ease-out both;
+      }
+      @keyframes tvout {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+      @keyframes tvback {
+        from {
+          opacity: 0;
+          visibility: hidden;
+        }
+        to {
+          opacity: 1;
+          visibility: visible;
+        }
+      }
+
+      /* overlay-preview.html's "Move score": drag it about, pull its corner to resize. */
+      body.placing .graphic,
+      body.placing .wipe {
+        visibility: hidden !important;
+      }
+      body.placing .board {
+        z-index: 10;
+        opacity: 1;
+        cursor: move;
+        outline: 0.25vw dashed #f5c542;
+        outline-offset: 0.3vw;
+        touch-action: none;
+      }
+      .grip {
+        display: none;
+      }
+      body.placing .grip {
+        display: block;
+        position: absolute;
+        right: -1.4vw;
+        top: -1.4vw;
+        width: 2.4vw;
+        height: 2.4vw;
+        border-radius: 50%;
+        background: #f5c542;
+        border: 0.3vw solid #fff;
+        box-shadow: 0 0 1vw rgba(0, 0, 0, 0.5);
+        cursor: nesw-resize;
+        z-index: 3;
+      }
+
+      /* The stinger: a rendered film that fogs in, hides the change, and fogs away. */
+      .wipe {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 9;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .wipe.run {
+        visibility: visible;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="star" viewBox="0 0 24 24">
+        <path d="M12 0Q12.6 11.4 24 12Q12.6 12.6 12 24Q11.4 12.6 0 12Q11.4 11.4 12 0Z" />
+      </symbol>
+    </svg>
+    <div class="board" id="board">
+      <img id="art" src="overlay/frame.webp" alt="" />
+      <canvas id="art-moving"></canvas>
+      <div class="brand">MOONSTONE</div>
+      <div class="row" id="row1">
+        <span class="name"></span><span class="games"></span><span class="tick"></span
+        ><span class="dots"><span class="dot"></span><span class="dot"></span></span
+        ><span class="score"></span>
+      </div>
+      <div class="row" id="row2">
+        <span class="name"></span><span class="games"></span><span class="tick"></span
+        ><span class="dots"><span class="dot"></span><span class="dot"></span></span
+        ><span class="score"></span>
+      </div>
+      <div class="caption" id="caption"></div>
+      <div class="grip" id="grip"></div>
+    </div>
+    <div class="graphic" id="graphic"></div>
+    <video class="wipe" id="wipe" src="overlay/stinger.webm" preload="auto" playsinline></video>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const TOURNAMENT = params.get('tournament');
+      const STREAM = params.get('stream') || '1';
+      const board = document.getElementById('board');
+      const caption = document.getElementById('caption');
+      let last = null;
+
+      // A long name shrinks to fit its line, and only then gets cut off.
+      function setName(el, name) {
+        if (el.textContent === name) return;
+        el.textContent = name;
+        el.style.fontSize = '';
+        const full = parseFloat(getComputedStyle(el).fontSize);
+        for (
+          let size = full;
+          el.scrollWidth > el.clientWidth && size > full * 0.65;
+          size -= full * 0.05
+        ) {
+          el.style.fontSize = `${size}px`;
+        }
+      }
+
+      function setScore(el, score) {
+        const text = String(score);
+        if (el.textContent === text) return;
+        const changed = el.textContent !== '';
+        el.textContent = text;
+        if (changed) {
+          el.classList.remove('bump');
+          void el.offsetWidth; // Restarts the animation on points in quick succession.
+          el.classList.add('bump');
+        }
+      }
+
+      function setRow(id, name, games, score, serving, serverNumber) {
+        const row = document.getElementById(id);
+        row.classList.toggle('serving', serving);
+        row.classList.toggle('second-serve', serverNumber === 2);
+        setName(row.querySelector('.name'), name);
+        row.querySelector('.games').textContent = games;
+        setScore(row.querySelector('.score'), score);
+      }
+
+      // A division's short code in words: "WD <4" reads "Women <4".
+      const DIVISION_WORDS = {
+        MD: 'Men',
+        WD: 'Women',
+        XD: 'Mixed',
+        MXD: 'Mixed',
+        MX: 'Mixed',
+        MS: "Men's singles",
+        WS: "Women's singles",
+      };
+      function divisionWords(name) {
+        return name.replace(
+          /^[A-Za-z]+(?![A-Za-z])/,
+          (code) => DIVISION_WORDS[code.toUpperCase()] ?? code,
+        );
+      }
+
+      // Under the score: the division and the round. The dots show the serve.
+      function captionOf(match) {
+        const parts = [];
+        if (match.division) parts.push(divisionWords(match.division));
+        if (match.round) parts.push(match.round);
+        if (match.best_of > 1 && match.status !== 'FINISHED')
+          parts.push(`Game ${match.game_number}`);
+        return parts.join(' · ');
+      }
+
+      function setBoard(match) {
+        board.classList.toggle('on', match != null);
+        if (match == null) return;
+        board.classList.toggle('single', match.best_of === 1);
+        setRow(
+          'row1',
+          match.team1,
+          match.games1,
+          match.score1,
+          match.serving_team === 1,
+          match.server_number,
+        );
+        setRow(
+          'row2',
+          match.team2,
+          match.games2,
+          match.score2,
+          match.serving_team === 2,
+          match.server_number,
+        );
+        caption.textContent = captionOf(match);
+      }
+
+      function esc(text) {
+        const el = document.createElement('div');
+        el.textContent = text ?? '';
+        return el.innerHTML;
+      }
+
+      function playerFacts(player) {
+        return [
+          player.dupr != null ? `DUPR ${Number(player.dupr).toFixed(2)}` : null,
+          player.age != null ? `Age ${player.age}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+      }
+
+      const STAR = '<svg class="star"><use href="#star" /></svg>';
+      const RULE = `<div class="rule">${STAR}</div>`;
+      const WINGS = '<canvas class="wing left"></canvas><canvas class="wing right"></canvas>';
+
+      // The ribbon coming in over whatever's on the picture.
+      function scene(inner) {
+        return `${inner}${WINGS}`;
+      }
+
+      // A team's name, with the "&" in it set apart.
+      function styledName(name) {
+        return esc(name).replace(/ &amp; /g, ' <em>&amp;</em> ');
+      }
+
+      function kicker(text) {
+        return text ? `<div class="cap">${esc(text)}</div>` : '';
+      }
+
+      function initials(name) {
+        return name
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((word) => word[0])
+          .join('')
+          .toUpperCase();
+      }
+
+      function photoUrl(photo) {
+        // A path is one of overlay-preview.html's samples, not a player's uploaded file.
+        return photo.startsWith('/')
+          ? photo
+          : `/api/static/player-photos/${encodeURIComponent(photo)}`;
+      }
+
+      function figure(player, order) {
+        const flat = player.photo != null && /\.jpe?g$/i.test(player.photo);
+        return `<div class="gfig" style="--order:${order}">${
+          player.photo
+            ? `<img src="${photoUrl(player.photo)}" alt=""${flat ? ' class="flat"' : ''}>`
+            : `<b><span>${esc(initials(player.name))}</span></b>`
+        }</div>`;
+      }
+
+      // The teams' players side by side, in the same columns as the words under them.
+      function cast(teams, size = '') {
+        let order = 0;
+        return `<div class="gcast ${size}">${teams
+          .map(
+            (team) => `<div class="gside" style="--count:${team.players.length}">
+    ${team.players.map((player) => figure(player, order++)).join('')}</div>`,
+          )
+          .join('')}</div>`;
+      }
+
+      function pastMatches(team) {
+        if (team.previous.length === 0) return '';
+        const results = { true: ['won', 'W'], false: ['', 'L'], null: ['', 'D'] };
+        return `<div class="gpast">${team.previous
+          .map((match) => {
+            const [style, letter] = results[match.won];
+            const scores = match.games
+              .map(([own, other]) => `<strong>${own}</strong>–${other}`)
+              .join(' ');
+            return `<div class="gpastrow"><b class="${style}">${letter}</b><span>${esc(match.opponent)}</span><small>${scores}</small></div>`;
+          })
+          .join('')}</div>`;
+      }
+
+      // A team's tournament so far, with whether they won the toss.
+      function teamHistory(team, graphic, side) {
+        const record =
+          team.wins + team.losses > 0
+            ? `Record ${team.wins}–${team.losses} · Points ${team.point_difference > 0 ? '+' : ''}${team.point_difference}`
+            : '';
+        const toss = graphic.toss_winner === side ? '<b>Won the toss</b>' : '';
+        const line = [esc(record), toss].filter(Boolean).join(' · ');
+        return `${line ? `<div class="gstat">${line}</div>` : ''}${pastMatches(team)}`;
+      }
+
+      function teamColumn(team, graphic, side) {
+        return `<div>
+    <div class="gname">${styledName(team.name)}</div>
+    <div class="gpair" style="--count:${team.players.length}">${team.players
+      .map(
+        (player) =>
+          `<div class="gcell">${esc(player.name)}<small>${esc(playerFacts(player))}</small></div>`,
+      )
+      .join('')}</div>
+    ${teamHistory(team, graphic, side)}
+  </div>`;
+      }
+
+      function graphicPhotos(graphic) {
+        return [...graphic.team1.players, ...graphic.team2.players]
+          .map((player) => player.photo)
+          .filter(Boolean);
+      }
+
+      function matchup(graphic) {
+        return `<div class="gmatchup"><div class="gname">${styledName(graphic.team1.name)}</div>
+    <div class="say">versus</div>
+    <div class="gname">${styledName(graphic.team2.name)}</div></div>`;
+      }
+
+      function clock(time) {
+        return new Date(time).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+      }
+
+      function orderOfPlay(graphic) {
+        if (graphic.following.length === 0) return '';
+        // With no times scheduled, its place in the order. The match above is the first.
+        return `<div class="gorder">
+    ${graphic.following
+      .map(
+        (match, index) => `<div class="grow">
+      <span class="gwhen">${esc(match.start_time ? clock(match.start_time) : `#${index + 2}`)}</span>
+      <span class="gleft">${esc(match.team1)}</span><i>v</i><span>${esc(match.team2)}</span>
+      <small>${esc(match.pool)}</small>
+    </div>`,
+      )
+      .join('')}</div>`;
+      }
+
+      const TOSS_PICKS = {
+        SERVE: 'will serve first',
+        RECEIVE: 'will receive first',
+        DEFER: 'deferred',
+      };
+
+      function tossPerson(graphic, team, name) {
+        const players = (team === 1 ? graphic.team1 : graphic.team2).players;
+        return players.find((player) => player.name === name) ?? { name, photo: null };
+      }
+
+      function tvMoment(people, name, say = '', extra = '') {
+        return `<div class="tvstage">${people.length ? cast([{ players: people }]) : ''}${extra}</div>
+    <div class="tvcopy"><div class="gname">${styledName(name)}</div>${RULE}${say ? `<div class="say">${esc(say)}</div>` : ''}</div>`;
+      }
+
+      // Heads or tails on its own, as big as it goes.
+      function tvFace(person, face, coin, motion) {
+        return `<div class="tvstage ${motion}">${cast([{ players: [person] }])}${coin}</div>
+    <div class="tvcopy">${RULE}<div class="tvface">${faceName(face)}</div></div>`;
+      }
+
+      // What a team's first player does, from the team's pick of serve or receive.
+      function tossRole(toss, team) {
+        const { team: picker, choice } = toss.picks.find(
+          (pick) => pick.choice === 'SERVE' || pick.choice === 'RECEIVE',
+        );
+        return (choice === 'SERVE') === (team === picker) ? 'serves first' : 'receives first';
+      }
+
+      const faceName = (face) => (face === 'HEADS' ? 'Heads' : 'Tails');
+
+      // Only what just happened is on screen.
+      function tossMoment(graphic) {
+        const toss = graphic.toss;
+        const teamOf = (side) => (side === 1 ? graphic.team1 : graphic.team2);
+        if (toss.latest === 'STARTER') {
+          const { team, name } = toss.starters.at(-1);
+          return tvMoment([tossPerson(graphic, team, name)], name, tossRole(toss, team));
+        }
+        if (toss.latest === 'PICK') {
+          const { team, choice, end } = toss.picks.at(-1);
+          const say =
+            choice === 'SIDE'
+              ? `chose the ${end === 'BACK' ? 'second' : 'main'} entrance end`
+              : TOSS_PICKS[choice];
+          return tvMoment(teamOf(team).players, teamOf(team).name, say);
+        }
+        const caller = tossPerson(graphic, toss.caller_team, toss.caller_name);
+        if (toss.call == null) return tvMoment([caller], toss.caller_name, 'is doing the toss');
+        if (toss.result == null) {
+          return tvFace(
+            caller,
+            toss.call,
+            `<div class="tvcoinbox"><div class="tvcoin spin">${STAR}</div></div>`,
+            'tvslide',
+          );
+        }
+        const winner = teamOf(toss.call === toss.result ? toss.caller_team : 3 - toss.caller_team);
+        return `<div>
+    <div class="tv tvfirst">${tvFace(
+      caller,
+      toss.result,
+      `<div class="tvcoinbox"><div class="tvcoin landed"><span>${toss.result[0]}</span></div></div>`,
+      'tvstill',
+    )}</div>
+    <div class="tv tvthen">${tvMoment(winner.players, winner.name, 'won the toss')}</div>
+  </div>`;
+      }
+
+      function graphicHtml(graphic) {
+        const where = [graphic.court && `Court ${graphic.court}`, graphic.pool].filter(Boolean);
+        const kick = (...first) => [...first, ...where].filter(Boolean).join(' · ');
+        // The players stand over the words once anyone has a photo; until then it's just the words.
+        const photos = graphicPhotos(graphic).length > 0;
+        const teams = [graphic.team1, graphic.team2];
+        if (graphic.stage === 'RESULT') {
+          const winner = graphic.winner === 1 ? graphic.team1 : graphic.team2;
+          const stands = winner.players.some((player) => player.photo);
+          const scores = graphic.games.map((game) => esc(game.join('–'))).join('<i>◆</i>');
+          return scene(`<div class="flow">${stands ? cast([winner], 'solo') : ''}
+      <div class="gcopy">${kicker(kick('Final'))}${RULE}<div class="gbig">${styledName(winner.name)}</div>
+        ${scores ? `<div class="gscores">${scores}</div>` : ''}</div></div>`);
+        }
+        if (graphic.stage === 'UP_NEXT') {
+          const when = graphic.start_time ? clock(graphic.start_time) : null;
+          const more = graphic.following.length > 0;
+          return scene(`<div class="flow ${more ? 'tight' : ''}">${photos ? cast(teams, more ? 'small' : '') : ''}
+      <div class="gcopy">${kicker(kick('Up next', when))}${RULE}${matchup(graphic)}${orderOfPlay(graphic)}</div></div>`);
+        }
+        if (graphic.stage === 'TOSS') {
+          // Calling the coin and its landing carry on from the moment before, so they don't fade in.
+          const carries = graphic.toss.call != null && graphic.toss.latest == null;
+          return scene(
+            `<div class="veil"></div><div class="tv ${carries ? 'tvcarry' : ''}">${tossMoment(graphic)}</div>`,
+          );
+        }
+        if (graphic.stage === 'PLAYERS') {
+          const history = teams.some(
+            (team) => team.previous.length > 0 || team.wins + team.losses > 0,
+          );
+          return scene(`<div class="flow tight">${photos ? cast(teams, history ? 'mid' : '') : ''}
+      <div class="gcopy">${kicker(kick())}${RULE}<div class="gteams">${teamColumn(graphic.team1, graphic, 1)}${teamColumn(graphic.team2, graphic, 2)}</div></div></div>`);
+        }
+        return scene(`<div class="flow">${photos ? cast(teams) : ''}
+    <div class="gcopy">${kicker(kick())}${RULE}${matchup(graphic)}</div></div>`);
+      }
+
+      let graphicShown = null;
+
+      // Where the ribbon runs off the scoreboard's art, as parts of the picture.
+      const WING = { x: 0.59, y: 0.195, width: 0.41, height: 0.805 };
+
+      function drawWings(art) {
+        const artWidth = art.naturalWidth ?? art.width;
+        const artHeight = art.naturalHeight ?? art.height;
+        document.querySelectorAll('#graphic canvas.wing').forEach((wing) => {
+          const width = Math.round(artWidth * WING.width);
+          const height = Math.round(artHeight * WING.height);
+          if (wing.width !== width || wing.height !== height) {
+            wing.width = width;
+            wing.height = height;
+          }
+          const pen = wing.getContext('2d');
+          pen.clearRect(0, 0, width, height);
+          pen.drawImage(
+            art,
+            artWidth * WING.x,
+            artHeight * WING.y,
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+          );
+        });
+      }
+
+      function setGraphic(graphic) {
+        const el = document.getElementById('graphic');
+        el.classList.toggle('on', graphic != null);
+        // Only when it's changed: a new score mustn't make the players rise again.
+        const html = graphic != null ? graphicHtml(graphic) : null;
+        if (html != null && html !== graphicShown) {
+          el.innerHTML = html;
+          // With no moving art to copy from, the ribbon is the still one.
+          if (!board.classList.contains('moving')) drawWings(document.getElementById('art'));
+        }
+        graphicShown = html;
+      }
+
+      let shownLayers = null; // What's up, to know when the picture really changes.
+      let latest = null;
+      let wiping = false;
+
+      function layersOf(state) {
+        return `${state.graphic?.key ?? ''}|${state.scoreboard != null}`;
+      }
+
+      function draw(state) {
+        setBoard(state.scoreboard);
+        setGraphic(state.graphic);
+      }
+
+      /* A change of graphic happens behind the stinger. A new score doesn't, and neither
+   does the first thing shown after loading, so a refresh of the source in OBS doesn't
+   look like anything happened.
+
+   The film covers the whole screen from 0.75s to 2.33s, so the change has plenty of
+   room even if the page freezes. A backup timer means it can't be left over the stream. */
+      const STINGER_CHANGE_AT = 0.85;
+      const STINGER_LONGEST = 5000;
+
+      // OBS keeps this page running on every scene, but it's only on air in the scenes that
+      // hold it: on another camera or a replay, a film would play unseen and its sound heard.
+      let onAir = true;
+      let endStinger = null;
+      window.addEventListener('obsSourceActiveChanged', (event) => {
+        onAir = event.detail.active;
+        if (!onAir && endStinger != null) endStinger();
+      });
+
+      function stinger() {
+        const wipe = document.getElementById('wipe');
+        // Off air or not loaded yet: no stinger, rather than part of one.
+        if (!onAir || wipe.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
+          draw(latest);
+          return;
+        }
+        wiping = true;
+        let changed = false;
+        const change = () => {
+          if (changed) return;
+          changed = true;
+          draw(latest);
+        };
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          endStinger = null;
+          clearInterval(watching);
+          clearTimeout(backup);
+          wipe.removeEventListener('ended', finish);
+          wipe.pause();
+          wipe.classList.remove('run');
+          wipe.currentTime = 0;
+          change();
+          wiping = false;
+          render(latest);
+        };
+        const watching = setInterval(() => {
+          if (wipe.currentTime >= STINGER_CHANGE_AT) change();
+        }, 30);
+        const backup = setTimeout(finish, STINGER_LONGEST);
+        endStinger = finish;
+        wipe.addEventListener('ended', finish);
+        wipe.classList.add('run');
+        // A page nobody has clicked on may not play sound: then without it.
+        wipe.play().catch(() => {
+          wipe.muted = true;
+          wipe.play().catch(finish);
+        });
+      }
+
+      // Loaded ahead, so the player cards are ready by the time the stinger reveals them.
+      const preloaded = new Map();
+      function preload(graphic) {
+        if (graphic == null) return;
+        graphicPhotos(graphic)
+          .filter((photo) => !preloaded.has(photo))
+          .forEach((photo) => {
+            const image = new Image();
+            image.src = photoUrl(photo);
+            preloaded.set(photo, image);
+          });
+      }
+
+      function render(state) {
+        latest = state;
+        preload(state.graphic);
+        if (wiping) return;
+        const layers = layersOf(state);
+        const nothingLeft = state.graphic == null && state.scoreboard == null;
+        if (shownLayers != null && layers !== shownLayers && !nothingLeft) {
+          shownLayers = layers;
+          stinger();
+          return;
+        }
+        shownLayers = layers;
+        draw(state);
+      }
+
+      async function poll() {
+        try {
+          // An empty bearer is what the browser sends when nobody is logged in; the
+          // API rejects a request with no Authorization header at all.
+          const res = await fetch(`/api/tournaments/${TOURNAMENT}/overlays/${STREAM}`, {
+            headers: { Authorization: 'bearer ' },
+            cache: 'no-store',
+          });
+          if (!res.ok) throw new Error(res.statusText);
+          const { data } = await res.json();
+          const sig = JSON.stringify(data);
+          if (sig !== last) {
+            last = sig;
+            render(data);
+          }
+        } catch (e) {
+          // Leave what's up alone rather than blanking the stream.
+        }
+      }
+
+      // Quicker during the coin toss, where viewers are watching for what a player just pressed.
+      async function keepPolling() {
+        await poll();
+        setTimeout(keepPolling, latest?.graphic?.stage === 'TOSS' ? 250 : 500);
+      }
+
+      if (TOURNAMENT) {
+        // Names are measured to fit, which needs the real font.
+        document.fonts.ready.then(() => {
+          last = null;
+          keepPolling();
+        });
+      }
+
+      // Where the score sits, the same for every stream: moved on overlay-preview.html.
+      let layout = null;
+      function applyLayout(next) {
+        layout = next;
+        board.style.setProperty('--left', `${next.left}vw`);
+        board.style.setProperty('--bottom', `${next.bottom}vw`);
+        board.style.setProperty('--width', `${next.width}vw`);
+      }
+      let placing = false;
+      async function loadLayout() {
+        try {
+          const res = await fetch('api/overlay_layout.json', { cache: 'no-store' });
+          // Not while it's being dragged, or it would jump back mid-drag.
+          if (res.ok && !placing) applyLayout((await res.json()).data);
+        } catch (e) {
+          // Keep it where it is.
+        }
+      }
+      loadLayout();
+      setInterval(loadLayout, 5000);
+
+      // overlay-preview.html: sample states from the page around this one, drawn the real way.
+      if (params.has('preview')) {
+        window.addEventListener('message', (event) => {
+          if (event.origin !== location.origin || event.source !== window.parent) return;
+          if (event.data?.reloadLayout) {
+            loadLayout();
+            return;
+          }
+          if (event.data?.placing != null) {
+            placing = event.data.placing;
+            document.body.classList.toggle('placing', placing);
+            if (event.data.reset) {
+              applyLayout({ left: 0, bottom: 2, width: 52 });
+              saveLayout();
+            }
+            return;
+          }
+          document.fonts.ready.then(() => render(event.data));
+        });
+
+        // Saved as the signed-in organizer, from the Bracket app's sign-in in this browser.
+        async function saveLayout() {
+          let token = '';
+          try {
+            token = JSON.parse(localStorage.getItem('login') ?? 'null')?.access_token ?? '';
+          } catch (e) {
+            // Not signed in.
+          }
+          let saved = false;
+          try {
+            const res = await fetch('api/overlay_layout.json', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: `bearer ${token}` },
+              body: JSON.stringify(layout),
+            });
+            saved = res.ok;
+          } catch (e) {
+            // Says so below.
+          }
+          window.parent.postMessage({ layoutSaved: saved }, location.origin);
+        }
+
+        // Drag to move; the corner grip resizes, keeping the bottom-left corner put.
+        const round = (n) => Math.round(n * 10) / 10;
+        board.addEventListener('pointerdown', (event) => {
+          if (!placing || layout == null) return;
+          event.preventDefault();
+          board.setPointerCapture(event.pointerId);
+          const vw = window.innerWidth / 100;
+          const start = { ...layout, x: event.clientX, y: event.clientY };
+          const resizing = event.target === document.getElementById('grip');
+          const onMove = (e) => {
+            const dx = (e.clientX - start.x) / vw;
+            const dy = (e.clientY - start.y) / vw;
+            if (resizing) {
+              const width = Math.min(100, Math.max(15, start.width + Math.max(dx, -dy * 3)));
+              applyLayout({ ...layout, width: round(width) });
+            } else {
+              applyLayout({
+                ...layout,
+                left: round(
+                  Math.min(100 - layout.width / 2, Math.max(-layout.width / 2, start.left + dx)),
+                ),
+                bottom: round(Math.min(55, Math.max(-5, start.bottom - dy))),
+              });
+            }
+          };
+          const onUp = () => {
+            board.removeEventListener('pointermove', onMove);
+            board.removeEventListener('pointerup', onUp);
+            board.removeEventListener('pointercancel', onUp);
+            saveLayout();
+          };
+          board.addEventListener('pointermove', onMove);
+          board.addEventListener('pointerup', onUp);
+          board.addEventListener('pointercancel', onUp);
+        });
+      }
+    </script>
+
+    <script>
+      // The frame's movement, in layers the way a game's effect is built. The wisps drift
+      // along the ribbon like a flow map: two copies of the art slide along the flow and
+      // take turns fading out and restarting, so it runs forever without building up
+      // distortion or showing a jump. On top go silk filaments, strands of light, embers
+      // and bloom. The panel and moon stay still. With no WebGL, the still image stays up.
+      const FLOW_SECONDS = 8; // How long one slide lasts; higher is calmer.
+      const FLOW_DISTANCE = 0.04; // How far it slides in that time, in frame widths.
+      const SWIRL = 0.7; // How much the flow wanders off the ribbon's line.
+      const SHIMMER = 0.22; // How much the wisps' brightness ripples.
+      const SPARKLES = 1.0; // How bright the twinkles are.
+      const GLINT_SECONDS = 14; // How often light sweeps across the gold.
+      const STRANDS = 0.4; // How bright the drawn strands of light are; 0 for none.
+      const FILAMENTS = 0.55; // How bright the fine silk hairs in the tail are; 0 for none.
+      const PARTICLES = 280; // How many embers drift along the ribbon.
+      const BLOOM = 0.5; // How much bright light bleeds outward; 0 for none.
+      const MAX_DRAW_WIDTH = 1400;
+
+      // Where the ribbon runs and what stays still, shared by every layer below.
+      const SHAPES = `
+// 1 inside the box, fading to 0 over the given width outside it.
+float box(vec2 p, vec2 low, vec2 high, vec2 fade) {
+  vec2 inside = smoothstep(low - fade, low, p) * (1.0 - smoothstep(high, high + fade, p));
+  return inside.x * inside.y;
+}
+
+// Where the ribbon runs across the frame, from the left swirl to the tail's tip.
+float ribbonY(float x) {
+  // A smooth curve: any kink in it would shear the art into a visible seam.
+  return 0.57 + 0.11 * smoothstep(0.2, 0.6, x) * sin(9.0 * (x - 0.63));
+}
+
+// How far the ribbon spreads either side of that line: wide, narrowing to the tip.
+float ribbonSpread(float x) {
+  return mix(0.26, 0.05, smoothstep(0.55, 1.0, x));
+}
+
+// The art had a moon here once; with none, nothing outside the panel holds still.
+float moonAt(vec2 p) {
+  return 0.0;
+}
+
+float panelAt(vec2 p) {
+  // Its right side melts into the tail in the art, so the movement eases in slowly.
+  // The fades are wide because moving art next to still art shears: a narrow one
+  // shows as a sharp crease along the panel's edge.
+  return box(p, vec2(0.1125, 0.25), vec2(1.0, 0.75), vec2(0.05, 0.16))
+    * (1.0 - smoothstep(0.6, 0.76, p.x));
+}
+`;
+
+      const VERTEX = `#version 300 es
+in vec2 corner;
+out vec2 uv;
+void main() {
+  uv = vec2(corner.x * 0.5 + 0.5, 0.5 - corner.y * 0.5);
+  gl_Position = vec4(corner, 0.0, 1.0);
+}`;
+
+      const FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 color;
+uniform sampler2D art;
+uniform float t;
+
+const float FLOW_SECONDS = ${FLOW_SECONDS.toFixed(3)};
+const float FLOW_DISTANCE = ${FLOW_DISTANCE.toFixed(3)};
+const float SWIRL = ${SWIRL.toFixed(3)};
+const float SHIMMER = ${SHIMMER.toFixed(3)};
+const float SPARKLES = ${SPARKLES.toFixed(3)};
+const float GLINT_SECONDS = ${GLINT_SECONDS.toFixed(3)};
+const float STRANDS = ${STRANDS.toFixed(3)};
+const float FILAMENTS = ${FILAMENTS.toFixed(3)};
+const vec3 GOLD = vec3(1.0, 0.86, 0.58);
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+    f.y
+  );
+}
+
+float cloud(vec2 p) {
+  return 0.6 * noise(p) + 0.3 * noise(p * 2.1 + 7.0) + 0.1 * noise(p * 4.3 + 13.0);
+}
+
+${SHAPES}
+
+vec2 flowAt(vec2 p) {
+  float slope = (ribbonY(p.x + 0.01) - ribbonY(p.x - 0.01)) / 0.02;
+  vec2 along = vec2(1.0, slope + 0.6 * (ribbonY(p.x) - p.y));
+  // The slope of a slowly changing cloud gives a swirl with no bunching up.
+  float e = 0.01;
+  vec2 q = p * vec2(5.0, 3.0) + vec2(t * 0.012, -t * 0.008);
+  float dx = cloud(q + vec2(e, 0.0)) - cloud(q - vec2(e, 0.0));
+  float dy = cloud(q + vec2(0.0, e)) - cloud(q - vec2(0.0, e));
+  return normalize(normalize(along) + SWIRL * vec2(dy, -dx) / (2.0 * e) * 0.35);
+}
+
+// Thin strands of light drawn along the ribbon. Unlike the art, which can only
+// slide, these change shape as they go, weaving and gathering towards the tail.
+vec3 strandsAt(vec2 p) {
+  vec3 light = vec3(0.0);
+  float spread = ribbonSpread(p.x);
+  float ends = smoothstep(0.42, 0.62, p.x) * (1.0 - smoothstep(0.88, 0.99, p.x));
+  for (int i = 0; i < 7; i++) {
+    float n = float(i);
+    float lane = n / 6.0 - 0.5;
+    float weave = noise(vec2(p.x * 3.5 - t * 0.05 * (1.0 + 0.2 * n), n * 7.3 + t * 0.03)) - 0.5;
+    float y = ribbonY(p.x) + spread * (lane + 0.9 * weave);
+    float width = 0.0035 + 0.004 * noise(vec2(p.x * 6.0 + n * 3.1, t * 0.06));
+    float d = (p.y - y) / width;
+    // Brighter stretches run along each strand, towards the tip.
+    float run = 0.3 + 0.7 * pow(0.5 + 0.5 * sin(p.x * 13.0 - t * 0.4 + n * 2.3), 3.0);
+    float line = exp(-d * d) + 0.22 * exp(-d * d / 30.0);
+    // Iridescent, like the art: blue through violet and cyan, with some gold.
+    float hue = fract(n * 0.17 + p.x * 0.8 - t * 0.015);
+    vec3 tint = hue < 0.33 ? mix(vec3(0.55, 0.7, 1.0), vec3(0.78, 0.6, 1.0), hue * 3.0)
+      : hue < 0.66 ? mix(vec3(0.78, 0.6, 1.0), vec3(0.55, 0.95, 1.0), (hue - 0.33) * 3.0)
+      : mix(vec3(0.55, 0.95, 1.0), GOLD, (hue - 0.66) * 3.0);
+    light += tint * line * run;
+  }
+  return light * ends * 0.75 * STRANDS;
+}
+
+// A thin bright line wherever noise crosses its middle.
+float hair(vec2 p) {
+  return pow(1.0 - abs(2.0 * noise(p) - 1.0), 36.0);
+}
+
+// The fine silk of the reference art: hundreds of hairs following the ribbon, made
+// by stretching noise along it and scrolling two layers at different speeds, with
+// the rainbow sheen of a thin film.
+vec3 filamentsAt(vec2 p) {
+  float across = (p.y - ribbonY(p.x)) / ribbonSpread(p.x);
+  across += 0.3 * (noise(vec2(p.x * 3.0 - t * 0.04, across * 1.5 + t * 0.02)) - 0.5);
+  float hairs = 0.9 * hair(vec2(p.x * 5.0 - t * 0.05, across * 24.0))
+    + 0.6 * hair(vec2(p.x * 9.0 - t * 0.09 + 4.0, across * 42.0 + 9.0));
+  float sheen = across * 1.6 + p.x * 2.0 - t * 0.02;
+  vec3 tint = 0.62 + 0.38 * cos(6.283 * (sheen + vec3(0.0, 0.33, 0.67)));
+  tint = mix(tint, vec3(0.75, 0.85, 1.0), 0.15);
+  float ends = smoothstep(0.42, 0.62, p.x) * (1.0 - smoothstep(0.9, 1.0, p.x));
+  return tint * hairs * ends * (1.0 - smoothstep(0.45, 1.05, abs(across))) * FILAMENTS;
+}
+
+void main() {
+  // What stays still: the panel with its band, and the moon with its star.
+  float moon = moonAt(uv);
+  float panel = panelAt(uv);
+  float free = (1.0 - panel) * (1.0 - moon);
+
+  vec2 flow = flowAt(uv) * free;
+  float phase = fract(t / FLOW_SECONDS);
+  float phase2 = fract(phase + 0.5);
+  vec4 first = texture(art, uv - flow * FLOW_DISTANCE * phase);
+  vec4 second = texture(art, uv - flow * FLOW_DISTANCE * phase2);
+  vec4 c = mix(first, second, abs(1.0 - 2.0 * phase));
+
+  // The wisps' brightness ripples, as if light were moving through them.
+  float ripple = cloud(uv * vec2(7.0, 4.0) - flow * t * 0.05) - 0.5;
+  c.rgb *= 1.0 + SHIMMER * 2.0 * ripple * free;
+
+  // A band of light sweeps across now and then, over the gold and the wisps.
+  float along = fract(t / GLINT_SECONDS) * 1.6 - 0.3 + (uv.y - 0.5) * 0.3;
+  float band = exp(-pow((uv.x - along) / 0.035, 2.0));
+  c.rgb += c.a * GOLD * band * 0.35 * max(free, moon);
+
+  // Twinkles, only where the ribbon is.
+  vec2 cells = uv * vec2(30.0, 10.0) + vec2(-t * 0.03, 0.0);
+  vec2 cell = floor(cells);
+  float sparkle = 0.0;
+  if (hash(cell) > 0.62) {
+    vec2 at = fract(cells) - 0.25 - 0.5 * vec2(hash(cell + 3.1), hash(cell + 5.7));
+    float beat = pow(max(0.0, sin(t * (0.5 + hash(cell + 9.3)) + hash(cell + 1.7) * 6.28)), 6.0);
+    float dot_ = exp(-dot(at, at) / 0.0025);
+    float cross_ = exp(-abs(at.x) / 0.008) * exp(-abs(at.y) / 0.09)
+                 + exp(-abs(at.y) / 0.008) * exp(-abs(at.x) / 0.09);
+    sparkle = (dot_ + 0.5 * cross_) * beat * SPARKLES * free;
+    sparkle *= smoothstep(0.02, 0.15, textureLod(art, uv, 5.0).a);
+  }
+
+  // The art is premultiplied, so light adds directly and alpha keeps up with it.
+  // The strands keep to where the ribbon is, so its overall shape stays yours.
+  vec3 strands = (strandsAt(uv) + filamentsAt(uv))
+    * free * smoothstep(0.03, 0.4, textureLod(art, uv, 4.0).a);
+  // Added like screen blending, so bright art keeps its colour instead of going white.
+  vec3 rgb = c.rgb + GOLD * sparkle + strands * (1.0 - c.rgb);
+  float glow = sparkle + max(strands.r, max(strands.g, strands.b));
+  float a = clamp(c.a + glow * (1.0 - c.a), 0.0, 1.0);
+  color = vec4(min(rgb, vec3(a)), a);
+}`;
+
+      // Embers: each one works out where it is from its number and the time, so nothing
+      // has to be simulated or stored, and a thousand cost little more than a hundred.
+      const PARTICLE_VERTEX = `#version 300 es
+precision highp float;
+uniform float t;
+uniform float scale;
+out vec3 tint;
+out float brightness;
+${SHAPES}
+float seeded(float n) {
+  return fract(sin((float(gl_VertexID) + 1.0) * (12.9898 + n * 7.233)) * 43758.5453);
+}
+void main() {
+  float life = 5.0 + 9.0 * seeded(1.0);
+  float phase = fract(t / life + seeded(2.0));
+  vec2 p;
+  if (seeded(6.0) < 0.75) {
+    // Along the tail, drifting towards the tip.
+    float x = 0.35 + 0.65 * seeded(3.0) + phase * 0.12 * (0.5 + seeded(4.0));
+    float wander = 0.25 * sin(phase * 6.283 + seeded(1.0) * 6.283);
+    p = vec2(x, ribbonY(x) + ribbonSpread(x) * ((seeded(5.0) - 0.5) * 1.3 + wander));
+  } else {
+    // Hanging around the moon and the left swirl.
+    p = vec2(0.02 + 0.4 * seeded(3.0), 0.08 + 0.84 * seeded(5.0));
+    p.x += 0.015 * sin(phase * 6.283);
+  }
+  p.y -= phase * 0.03;
+
+  float free = (1.0 - panelAt(p)) * (1.0 - moonAt(p));
+  float fade = smoothstep(0.0, 0.15, phase) * (1.0 - smoothstep(0.7, 1.0, phase));
+  float twinkle = 0.55 + 0.45 * sin(t * (1.0 + 3.0 * seeded(1.0)) + seeded(2.0) * 6.283);
+  brightness = free * fade * twinkle;
+  // Mostly gold, some the ribbon's blue and white.
+  tint = seeded(7.0) < 0.65 ? vec3(1.0, 0.82, 0.5) : vec3(0.72, 0.85, 1.0);
+  // Mostly fine dust, with the odd big star.
+  gl_PointSize = (1.6 + 9.0 * pow(seeded(4.0), 5.0)) * scale;
+  gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+}`;
+
+      const PARTICLE_FRAGMENT = `#version 300 es
+precision highp float;
+in vec3 tint;
+in float brightness;
+out vec4 color;
+void main() {
+  vec2 p = gl_PointCoord - 0.5;
+  float core = exp(-dot(p, p) * 45.0);
+  float rays = exp(-abs(p.x) * 40.0) * exp(-abs(p.y) * 7.0)
+    + exp(-abs(p.y) * 40.0) * exp(-abs(p.x) * 7.0);
+  float edge = 1.0 - smoothstep(0.35, 0.5, length(p));
+  float light = (core + 0.45 * rays) * edge * brightness;
+  color = vec4(tint * light, light);
+}`;
+
+      // The post-processing, a game engine's bloom: keep what's brightest, blur it, and
+      // add it back. The bright part comes from what moves, never the white panel,
+      // which would otherwise glare out over the score.
+      const BRIGHT_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 color;
+uniform sampler2D scene;
+${SHAPES}
+void main() {
+  vec4 c = texture(scene, vec2(uv.x, 1.0 - uv.y));
+  float keep = smoothstep(0.8, 1.0, max(c.r, max(c.g, c.b)));
+  color = c * keep * (1.0 - panelAt(uv));
+}`;
+
+      const BLUR_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 color;
+uniform sampler2D source;
+uniform vec2 step_;
+void main() {
+  vec2 p = vec2(uv.x, 1.0 - uv.y);
+  color = texture(source, p) * 0.227;
+  color += (texture(source, p + step_ * 1.385) + texture(source, p - step_ * 1.385)) * 0.316;
+  color += (texture(source, p + step_ * 3.231) + texture(source, p - step_ * 3.231)) * 0.07;
+}`;
+
+      const COMPOSITE_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 color;
+uniform sampler2D scene;
+uniform sampler2D bloom;
+const float BLOOM = ${BLOOM.toFixed(3)};
+${SHAPES}
+void main() {
+  vec2 p = vec2(uv.x, 1.0 - uv.y);
+  vec4 c = texture(scene, p);
+  // The panel behind the score stays exactly as it is.
+  vec4 glow = texture(bloom, p) * BLOOM * (1.0 - panelAt(uv));
+  float a = clamp(c.a + max(glow.r, max(glow.g, glow.b)) * (1.0 - c.a), 0.0, 1.0);
+  color = vec4(min(c.rgb + glow.rgb * (1.0 - c.rgb), vec3(a)), a);
+}`;
+
+      // False for a copy of this page in a frame nobody can see, as most are on overlay-preview.html.
+      function inSight() {
+        const frame = window.frameElement;
+        if (frame == null) return true;
+        const box = frame.getBoundingClientRect();
+        return box.width > 0 && box.bottom > 0 && box.top < window.parent.innerHeight;
+      }
+
+      function startMovingArt() {
+        const canvas = document.getElementById('art-moving');
+        const gl = canvas.getContext('webgl2', {
+          alpha: true,
+          premultipliedAlpha: true,
+          antialias: false,
+        });
+        if (gl == null) return;
+
+        const shader = (type, source) => {
+          const made = gl.createShader(type);
+          gl.shaderSource(made, source);
+          gl.compileShader(made);
+          if (!gl.getShaderParameter(made, gl.COMPILE_STATUS))
+            throw new Error(gl.getShaderInfoLog(made));
+          return made;
+        };
+        const makeProgram = (vertex, fragment) => {
+          const program = gl.createProgram();
+          gl.attachShader(program, shader(gl.VERTEX_SHADER, vertex));
+          gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragment));
+          gl.bindAttribLocation(program, 0, 'corner');
+          gl.linkProgram(program);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+            throw new Error(gl.getProgramInfoLog(program));
+          const uniform = (name) => gl.getUniformLocation(program, name);
+          return { program, uniform };
+        };
+        const artPass = makeProgram(VERTEX, FRAGMENT);
+        const particlePass = makeProgram(PARTICLE_VERTEX, PARTICLE_FRAGMENT);
+        const brightPass = makeProgram(VERTEX, BRIGHT_FRAGMENT);
+        const blurPass = makeProgram(VERTEX, BLUR_FRAGMENT);
+        const compositePass = makeProgram(VERTEX, COMPOSITE_FRAGMENT);
+
+        const still = document.getElementById('art');
+        const artTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, artTexture);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, still);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        const triangle = gl.createVertexArray();
+        gl.bindVertexArray(triangle);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const noAttributes = gl.createVertexArray();
+
+        // A picture to draw into, for the passes to hand on to each other.
+        const makeTarget = () => ({ texture: gl.createTexture(), buffer: gl.createFramebuffer() });
+        const sizeTarget = (target, width, height) => {
+          target.width = width;
+          target.height = height;
+          gl.bindTexture(gl.TEXTURE_2D, target.texture);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            width,
+            height,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            null,
+          );
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, target.buffer);
+          gl.framebufferTexture2D(
+            gl.FRAMEBUFFER,
+            gl.COLOR_ATTACHMENT0,
+            gl.TEXTURE_2D,
+            target.texture,
+            0,
+          );
+          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+            throw new Error('Could not make a target to draw into');
+          }
+        };
+        const scene = makeTarget();
+        const blurA = makeTarget();
+        const blurB = makeTarget();
+
+        const drawInto = (target, width, height) => {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, target == null ? null : target.buffer);
+          gl.viewport(0, 0, width, height);
+        };
+        const useTexture = (unit, texture, location) => {
+          gl.activeTexture(gl.TEXTURE0 + unit);
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.uniform1i(location, unit);
+        };
+        const fullFrame = () => {
+          gl.bindVertexArray(triangle);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        };
+
+        const board = document.getElementById('board');
+
+        // A lost graphics context puts the still image back.
+        canvas.addEventListener('webglcontextlost', () => board.classList.remove('moving'));
+
+        window.drawArt = (seconds) => {
+          const width = Math.min(Math.round(board.clientWidth * devicePixelRatio), MAX_DRAW_WIDTH);
+          const height = Math.round((width * still.naturalHeight) / still.naturalWidth);
+          // A page that's hidden, or an image still loading, has no size to draw at.
+          if (!width || !height) return;
+          if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+            sizeTarget(scene, width, height);
+            sizeTarget(blurA, Math.ceil(width / 4), Math.ceil(height / 4));
+            sizeTarget(blurB, Math.ceil(width / 4), Math.ceil(height / 4));
+          }
+
+          // The art, flowing, with its filaments and strands.
+          gl.disable(gl.BLEND);
+          drawInto(scene, width, height);
+          gl.useProgram(artPass.program);
+          useTexture(0, artTexture, artPass.uniform('art'));
+          gl.uniform1f(artPass.uniform('t'), seconds);
+          fullFrame();
+
+          // The embers, adding their light on top.
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.ONE, gl.ONE);
+          gl.useProgram(particlePass.program);
+          gl.uniform1f(particlePass.uniform('t'), seconds);
+          gl.uniform1f(particlePass.uniform('scale'), width / 1000);
+          gl.bindVertexArray(noAttributes);
+          gl.drawArrays(gl.POINTS, 0, PARTICLES);
+          gl.disable(gl.BLEND);
+
+          // Bloom, at a quarter of the size: the blur is wider and cheaper that way.
+          drawInto(blurA, blurA.width, blurA.height);
+          gl.useProgram(brightPass.program);
+          useTexture(0, scene.texture, brightPass.uniform('scene'));
+          fullFrame();
+          gl.useProgram(blurPass.program);
+          for (const spread of [1, 2]) {
+            drawInto(blurB, blurB.width, blurB.height);
+            useTexture(0, blurA.texture, blurPass.uniform('source'));
+            gl.uniform2f(blurPass.uniform('step_'), spread / blurA.width, 0);
+            fullFrame();
+            drawInto(blurA, blurA.width, blurA.height);
+            useTexture(0, blurB.texture, blurPass.uniform('source'));
+            gl.uniform2f(blurPass.uniform('step_'), 0, spread / blurA.height);
+            fullFrame();
+          }
+
+          // Everything together, on the page.
+          drawInto(null, width, height);
+          gl.useProgram(compositePass.program);
+          useTexture(0, scene.texture, compositePass.uniform('scene'));
+          useTexture(1, blurA.texture, compositePass.uniform('bloom'));
+          fullFrame();
+        };
+
+        // Tried once before taking over, so a failure leaves the still image up.
+        window.drawArt(0);
+        if (gl.getError() !== gl.NO_ERROR) throw new Error('The first draw failed');
+
+        board.classList.add('moving');
+        const graphicEl = document.getElementById('graphic');
+        const frame = (now) => {
+          // No use drawing while nothing's on screen.
+          if (
+            inSight() &&
+            (board.classList.contains('on') || getComputedStyle(graphicEl).visibility === 'visible')
+          ) {
+            window.drawArt(now / 1000);
+            drawWings(canvas);
+          }
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }
+
+      const stillArt = document.getElementById('art');
+      const startArt = () => {
+        try {
+          startMovingArt();
+        } catch (e) {
+          console.warn('Keeping the still frame:', e);
+        }
+      };
+      if (stillArt.complete && stillArt.naturalWidth > 0) startArt();
+      else stillArt.addEventListener('load', startArt, { once: true });
+    </script>
+  </body>
+</html>

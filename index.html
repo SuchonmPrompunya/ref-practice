@@ -1,0 +1,1735 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Overlay preview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <style>
+      /* Every overlay in one place, drawn by the real overlay.html from sample data. */
+      :root {
+        color-scheme: light;
+        --navy: #12306b;
+        --ink: #0b1530;
+        --dim: #44506b;
+        --line: rgba(30, 58, 138, 0.18);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        margin: 0;
+        background: #eef1f8;
+        color: var(--ink);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 16px;
+      }
+      .bar {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .where {
+        flex: 1;
+        min-width: 0;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      button {
+        font: inherit;
+        font-weight: 700;
+        border-radius: 10px;
+        cursor: pointer;
+        min-height: 44px;
+        padding: 0 16px;
+      }
+      .step {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--navy);
+      }
+      .step.primary,
+      .play {
+        border: 0;
+        background: var(--navy);
+        color: #fff;
+      }
+      .step:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      section {
+        scroll-margin-top: 84px;
+      }
+      /* Room for Next to bring the last one to the top too. */
+      section:last-child {
+        min-height: calc(100vh - 100px);
+      }
+      h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+      .when {
+        margin: 2px 0 8px;
+        color: var(--dim);
+      }
+      /* A stand-in for the camera, so the overlay's clear background shows. */
+      .frame {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        border-radius: 10px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #2f6f8f, #1d5a4c);
+      }
+      iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: transparent;
+      }
+      .play {
+        margin-top: 8px;
+      }
+
+      .views {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        flex: none;
+      }
+      .views button {
+        border: 0;
+        border-radius: 0;
+        background: #fff;
+        color: var(--navy);
+        padding: 0 12px;
+      }
+      .views button.on {
+        background: var(--navy);
+        color: #fff;
+      }
+      .bar.pairing .step,
+      .bar.pairing .where {
+        display: none;
+      }
+      .bar.pairing {
+        justify-content: center;
+      }
+
+      /* The real ref page beside the real overlay, on made-up matches. Nothing touches the server. */
+      #pair {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .split h2 {
+        margin-bottom: 8px;
+      }
+      .screen .frame {
+        max-width: calc((100vh - 280px) * 16 / 9);
+        min-width: min(100%, 480px);
+      }
+      .phone {
+        position: relative;
+        height: calc(100vh - 170px);
+        min-height: 560px;
+        max-height: 850px;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+      .made-up {
+        margin: 8px 0 0;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .steps {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .steps li {
+        padding: 8px 6px;
+        min-height: 64px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .steps b {
+        display: block;
+        font-size: 14px;
+        color: var(--ink);
+      }
+      .steps li.now {
+        border: 2px solid var(--navy);
+        background: #e8eefc;
+      }
+      .steps li.up {
+        border: 2px solid #15803d;
+        background: #e7f6ec;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+        align-items: center;
+      }
+      .controls .show {
+        flex: 1 1 220px;
+        border: 0;
+        background: var(--navy);
+        color: #fff;
+      }
+      .controls .show.hide {
+        background: #fff;
+        color: var(--navy);
+        border: 2px solid var(--navy);
+      }
+      .controls .mode {
+        flex: 0 1 auto;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+      .placenote {
+        font-weight: 700;
+      }
+      .placenote.bad {
+        color: #b91c1c;
+      }
+      .timer {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+      }
+      .timer select {
+        font: inherit;
+        min-height: 44px;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+      .ready {
+        width: 100%;
+        margin: 0;
+        font-weight: 700;
+        color: #b45309;
+      }
+      .log {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        font-size: 14px;
+      }
+      .log li {
+        padding: 6px 0;
+        border-top: 1px solid var(--line);
+      }
+      .log time {
+        color: var(--dim);
+        margin-right: 8px;
+        font-variant-numeric: tabular-nums;
+      }
+      @media (max-width: 900px) {
+        .split {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .screen {
+          order: -1;
+        }
+        .steps {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      /* Ref practice (?view=practice): two parts stacked. On top, the screen people watch,
+         the stream or the court monitor, switched between. Below, the real ref page on
+         made-up matches, so a tap there shows straight away above it. */
+      body.practice > header,
+      body.practice #pair {
+        display: none;
+      }
+      #practice {
+        display: none;
+      }
+      body.practice #practice {
+        display: flex;
+        flex-direction: column;
+        /* Exactly the screen, so the picture stays in view while the ref taps below it. */
+        height: 100dvh;
+        min-height: 560px;
+      }
+      .pbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+      }
+      .pbar .ptitle {
+        flex: 1;
+        min-width: 0;
+      }
+      .pbar b {
+        display: block;
+        font-size: 16px;
+      }
+      .pbar small {
+        display: block;
+        color: var(--dim);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pbar button,
+      .pswitch button {
+        min-height: 38px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--navy);
+        font-size: 14px;
+      }
+      .pbar button[disabled] {
+        opacity: 0.4;
+      }
+      .pscreen {
+        width: 100%;
+        max-width: calc(46dvh * 16 / 9);
+        margin: 0 auto;
+        padding: 8px 12px 0;
+      }
+      .pswitch {
+        display: flex;
+        margin-bottom: 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .pswitch button {
+        flex: 1;
+        border: 0;
+        border-radius: 0;
+      }
+      .pswitch button.on {
+        background: var(--navy);
+        color: #fff;
+      }
+      .pscreen .frame {
+        width: 100%;
+        border-radius: 8px;
+      }
+      #practice .pref {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        width: 100%;
+        max-width: 480px;
+        margin: 10px auto 0;
+        padding: 0 12px env(safe-area-inset-bottom);
+      }
+      .pref .phone {
+        flex: 1;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        border-radius: 14px 14px 0 0;
+        border-bottom: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="bar" id="bar">
+        <div class="views">
+          <button id="viewAll" class="on" onclick="setView(false)">All overlays</button>
+          <button id="viewRef" onclick="setView(true)">With the ref</button>
+          <button id="viewMonitor" onclick="setView(true, true)">Court monitor</button>
+          <button onclick="location.href = './'">
+            Ref practice
+          </button>
+        </div>
+        <div class="where" id="where" aria-live="polite"></div>
+        <button class="step" id="prev" onclick="go(-1)">Previous</button>
+        <button class="step primary" id="next" onclick="go(1)">Next</button>
+      </div>
+    </header>
+    <main id="list"></main>
+
+    <div id="pair" hidden>
+      <div class="split">
+        <div>
+          <h2>Referee</h2>
+          <div class="phone"><iframe id="refFrame" title="Referee page"></iframe></div>
+          <p class="made-up">The real ref page, on made-up matches. Nothing is saved.</p>
+        </div>
+        <div class="screen">
+          <h2 id="screenTitle">What viewers see</h2>
+          <div class="frame" id="liveBox">
+            <iframe id="liveFrame" title="Overlay" src="overlay.html?preview=1"></iframe>
+          </div>
+          <div class="frame" id="monitorBox" hidden>
+            <iframe id="monitorFrame" title="Court monitor"></iframe>
+          </div>
+          <ol class="steps" id="steps"></ol>
+          <div class="controls">
+            <p class="ready" id="ready" hidden>New stage ready: press Show to bring it up.</p>
+            <button class="show" id="showButton" onclick="pressShow()"></button>
+            <button class="mode" id="modeButton" onclick="switchMode()"></button>
+            <label class="timer" id="monitorCourtBox" hidden>
+              Monitor is on
+              <select id="monitorCourtPick" onchange="setMonitorCourt()"></select>
+            </label>
+            <label class="timer" id="refCourtBox" hidden>
+              Ref phone is on
+              <select id="refCourtPick" onchange="setRefCourt()"></select>
+            </label>
+            <label class="timer" id="timerBox" hidden>
+              Goes back after
+              <select id="timerSeconds" onchange="setMonitorTimer()">
+                <option value="10">10 seconds</option>
+                <option value="20" selected>20 seconds</option>
+                <option value="30">30 seconds</option>
+                <option value="60">60 seconds</option>
+              </select>
+            </label>
+            <button class="mode" id="skipButton" onclick="skipToGamePoint()">
+              Skip to game point
+            </button>
+            <button class="mode" onclick="startOver()">Start over</button>
+          </div>
+          <div id="placeBox"></div>
+          <ul class="log" id="log"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="practice">
+      <div class="pbar">
+        <div class="ptitle">
+          <b>Ref practice</b>
+          <small>Made-up matches. Nothing is saved.</small>
+        </div>
+        <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
+        <button onclick="startOver()">Start over</button>
+      </div>
+      <section class="pscreen" id="pScreen">
+        <div class="pswitch" role="tablist">
+          <button data-screen="monitor" class="on" onclick="showScreen('monitor')">
+            Court monitor
+          </button>
+          <button data-screen="live" onclick="showScreen('live')">Live viewers</button>
+        </div>
+      </section>
+      <section class="pref" id="pRef"></section>
+    </div>
+
+    <script>
+      const SAMPLE = (n) => new URL(`overlay/preview/player${n}.webp`, location.href).pathname;
+      const at = (time) => `2026-11-14T${time}:00`;
+      const TEAM1 = {
+        name: 'Mei & Hana',
+        wins: 2,
+        losses: 1,
+        point_difference: 4,
+        previous: [],
+        players: [
+          { name: 'Mei Suzuki', dupr: 3.32, age: 28, photo: SAMPLE(1) },
+          { name: 'Hana Sato', dupr: 3.18, age: 31, photo: SAMPLE(2) },
+        ],
+      };
+      const TEAM2 = {
+        name: 'Yuna & Lena',
+        wins: 1,
+        losses: 2,
+        point_difference: -6,
+        previous: [],
+        players: [
+          { name: 'Yuna Park', dupr: 3.05, age: 26, photo: SAMPLE(3) },
+          // No photo: this is how a player who skipped the booth looks.
+          { name: 'Lena Schmidt', dupr: 2.99, age: 34, photo: null },
+        ],
+      };
+      const graphic = (stage, extra = {}) => ({
+        key: `${stage}:1`,
+        stage,
+        court: 'C1',
+        pool: 'Women B',
+        start_time: at('14:30'),
+        team1: TEAM1,
+        team2: TEAM2,
+        toss_winner: null,
+        games: [],
+        winner: null,
+        following: [],
+        ...extra,
+      });
+      const SCOREBOARD = {
+        team1: TEAM1.name,
+        team2: TEAM2.name,
+        score1: 7,
+        score2: 5,
+        games1: 0,
+        games2: 0,
+        best_of: 1,
+        game_number: 1,
+        serving_team: 1,
+        server_number: 2,
+        status: 'IN_PROGRESS',
+        division: 'Women',
+        round: 'Semi-final',
+      };
+      const INTRO = { scoreboard: null, graphic: graphic('INTRO') };
+      const PLAYERS = {
+        scoreboard: null,
+        graphic: graphic('PLAYERS', {
+          toss_winner: 1,
+          team1: {
+            ...TEAM1,
+            previous: [
+              {
+                opponent: 'Aiko & Rin',
+                won: true,
+                games: [[11, 8]],
+              },
+              {
+                opponent: 'Sofia & Nina',
+                won: false,
+                games: [[8, 11]],
+              },
+              {
+                opponent: 'Kaya & Mio',
+                won: true,
+                games: [[11, 9]],
+              },
+            ],
+          },
+          team2: {
+            ...TEAM2,
+            previous: [
+              {
+                opponent: 'Sofia & Nina',
+                won: true,
+                games: [[11, 9]],
+              },
+              {
+                opponent: 'Aiko & Rin',
+                won: false,
+                games: [[10, 12]],
+              },
+              {
+                opponent: 'Kaya & Mio',
+                won: false,
+                games: [[5, 11]],
+              },
+            ],
+          },
+        }),
+      };
+
+      const OVERLAYS = [
+        { name: 'Match intro', when: 'The ref calls the players.', state: INTRO },
+        {
+          name: 'Coin toss: who calls it',
+          when: 'A player presses their name.',
+          state: {
+            scoreboard: null,
+            graphic: graphic('TOSS', {
+              toss: {
+                caller_team: 1,
+                caller_name: 'Mei Suzuki',
+                call: null,
+                result: null,
+                picks: [],
+                starters: [],
+                latest: null,
+              },
+            }),
+          },
+        },
+        {
+          name: 'Coin toss: what they call',
+          when: 'They press heads or tails, and the coin spins.',
+          state: {
+            scoreboard: null,
+            graphic: graphic('TOSS', {
+              toss: {
+                caller_team: 1,
+                caller_name: 'Mei Suzuki',
+                call: 'HEADS',
+                result: null,
+                picks: [],
+                starters: [],
+                latest: null,
+              },
+            }),
+          },
+        },
+        {
+          name: 'Coin toss: what they pick',
+          when: 'Each team makes its pick. Who serves or receives first looks the same, with one player.',
+          state: {
+            scoreboard: null,
+            graphic: graphic('TOSS', {
+              toss: {
+                caller_team: 1,
+                caller_name: 'Mei Suzuki',
+                call: 'HEADS',
+                result: 'TAILS',
+                picks: [{ team: 2, choice: 'SERVE' }],
+                starters: [],
+                latest: 'PICK',
+              },
+            }),
+          },
+        },
+        {
+          name: 'Player cards',
+          when: 'The phone is back with the ref, or the ref flipped the coin.',
+          state: PLAYERS,
+        },
+        {
+          name: 'Scoreboard',
+          when: 'The ref starts the match.',
+          state: { scoreboard: SCOREBOARD, graphic: null },
+        },
+        {
+          name: 'Match result',
+          when: 'The ref finishes the match.',
+          state: {
+            scoreboard: null,
+            graphic: graphic('RESULT', {
+              winner: 1,
+              games: [[11, 9]],
+            }),
+          },
+        },
+        {
+          name: 'Up next and order of play',
+          when: 'Before the first match, and each time signing is completed.',
+          state: {
+            scoreboard: null,
+            graphic: graphic('UP_NEXT', {
+              following: [
+                {
+                  start_time: at('14:50'),
+                  pool: 'Women B',
+                  team1: 'Aiko & Rin',
+                  team2: 'Sofia & Nina',
+                },
+                {
+                  start_time: at('15:10'),
+                  pool: 'Men A',
+                  team1: 'Ken & Daiki',
+                  team2: 'Tom & Marco',
+                },
+                {
+                  start_time: at('15:30'),
+                  pool: 'Men A',
+                  team1: 'Jun & Sota',
+                  team2: 'Alex & Ben',
+                },
+                { start_time: at('15:50'), pool: 'Mixed', team1: 'Mei & Ken', team2: 'Yuna & Tom' },
+              ],
+            }),
+          },
+        },
+        { name: 'Stinger', when: 'Plays on every change of graphic.', state: INTRO, stinger: true },
+      ];
+
+      // "Move score" under a frame showing the score: drag it, pull its yellow corner
+      // to resize. Saved on letting go; every stream's overlay in OBS follows within
+      // a few seconds, and the frames here straight away.
+      const placeFrames = [];
+      function placeControls(frame) {
+        placeFrames.push(frame);
+        const box = document.createElement('div');
+        box.className = 'controls';
+        box.innerHTML = `<button class="mode">Move score</button>
+          <button class="mode" hidden>Back to the default spot</button>
+          <span class="placenote" hidden></span>`;
+        const [toggle, reset, note] = box.children;
+        let on = false;
+        const send = (resetting = false) =>
+          frame.contentWindow.postMessage({ placing: on, reset: resetting }, location.origin);
+        toggle.onclick = () => {
+          on = !on;
+          toggle.textContent = on ? 'Done moving' : 'Move score';
+          reset.hidden = note.hidden = !on;
+          note.className = 'placenote';
+          note.textContent = 'Drag it, or pull the yellow corner to resize.';
+          send();
+        };
+        reset.onclick = () => send(true);
+        frame.addEventListener('load', () => on && send());
+        window.addEventListener('message', (event) => {
+          if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+          if (event.data?.layoutSaved == null) return;
+          note.hidden = false;
+          note.className = event.data.layoutSaved ? 'placenote' : 'placenote bad';
+          note.textContent = event.data.layoutSaved
+            ? 'Saved: every stream uses this now.'
+            : 'Not saved: sign in to Bracket in this browser first.';
+          // The other frames on this page follow at once.
+          if (event.data.layoutSaved) {
+            for (const other of placeFrames) {
+              if (other !== frame)
+                other.contentWindow?.postMessage({ reloadLayout: true }, location.origin);
+            }
+          }
+        });
+        return box;
+      }
+
+      const list = document.getElementById('list');
+      const sections = OVERLAYS.map((overlay, index) => {
+        const section = document.createElement('section');
+        section.dataset.index = index;
+        section.innerHTML = `<h2>${index + 1}. ${overlay.name}</h2><p class="when">${overlay.when}</p>
+    <div class="frame"><iframe title="${overlay.name}" src="overlay.html?preview=1" loading="lazy"></iframe></div>`;
+        const frame = section.querySelector('iframe');
+        frame.addEventListener('load', () =>
+          frame.contentWindow.postMessage(overlay.state, location.origin),
+        );
+        if (overlay.stinger) {
+          const play = document.createElement('button');
+          play.className = 'play';
+          play.textContent = 'Play stinger';
+          let showing = INTRO;
+          play.onclick = () => {
+            showing = showing === INTRO ? PLAYERS : INTRO;
+            frame.contentWindow.postMessage(showing, location.origin);
+          };
+          section.append(play);
+        }
+        if (overlay.state.scoreboard != null) section.append(placeControls(frame));
+        list.append(section);
+        return section;
+      });
+
+      let current = 0;
+      let pairing = false;
+      function showWhere() {
+        document.getElementById('where').textContent =
+          `${current + 1} of ${OVERLAYS.length} · ${OVERLAYS[current].name}`;
+        document.getElementById('prev').disabled = current === 0;
+        document.getElementById('next').disabled = current === OVERLAYS.length - 1;
+      }
+
+      function go(step) {
+        const target = Math.min(OVERLAYS.length - 1, Math.max(0, current + step));
+        current = target;
+        showWhere();
+        sections[target].scrollIntoView();
+      }
+
+      // The overlay at the top of the window, however it got there. Several fit on a tall screen.
+      window.addEventListener('scroll', () => {
+        if (pairing) return;
+        current =
+          sections.filter((section) => section.getBoundingClientRect().top <= 100).length - 1;
+        showWhere();
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (pairing) return;
+        if (event.key === 'ArrowRight') go(1);
+        if (event.key === 'ArrowLeft') go(-1);
+      });
+      showWhere();
+
+      /* With the ref: the real referee page beside the real overlay, on made-up matches. The ref
+   page's requests come here instead of the server (see ref-sandbox.js), so nothing is saved
+   and any change to its flow shows up here straight away. The answers, the stages and the
+   show and hide rules copy the backend (routes/match_scoring.py, routes/referee.py and
+   logic/overlay.py), so change them together. */
+      const STAGES = [
+        {
+          stage: 'UP_NEXT',
+          name: 'Up next',
+          cause: 'Before the first match, or signing completed',
+        },
+        { stage: 'INTRO', name: 'Match intro', cause: 'Ref called the players' },
+        { stage: 'TOSS', name: 'Coin toss', cause: 'A player pressed their name' },
+        { stage: 'PLAYERS', name: 'Player cards', cause: 'Phone back with the ref' },
+        { stage: 'SCORE', name: 'Scoreboard', cause: 'Ref started the match' },
+        { stage: 'RESULT', name: 'Match result', cause: 'Ref finished the match' },
+      ];
+      const stageInfo = (stage) => STAGES.find((row) => row.stage === stage);
+      const $ = (id) => document.getElementById(id);
+      const person = (name, dupr, age, photo = null) => ({ name, dupr, age, photo });
+      const pair = (name, players) => ({
+        name,
+        players,
+        wins: 0,
+        losses: 0,
+        point_difference: 0,
+        previous: [],
+      });
+      const RULES = { scoring_type: 'SIDEOUT', play_to: 11, win_by: 2, switch_ends: true };
+      const C1_MATCHES = [
+        {
+          id: 1,
+          time: '14:30',
+          pool: 'Women B',
+          best_of: 1,
+          team1: PLAYERS.graphic.team1,
+          team2: PLAYERS.graphic.team2,
+        },
+        {
+          id: 2,
+          time: '14:50',
+          pool: 'Women B',
+          best_of: 1,
+          team1: pair('Aiko & Rin', [
+            person('Aiko Tanaka', 3.41, 24, SAMPLE(4)),
+            person('Rin Ito', 3.27, 29, SAMPLE(1)),
+          ]),
+          team2: pair('Sofia & Nina', [
+            person('Sofia Reyes', 3.12, 33, SAMPLE(2)),
+            person('Nina Koh', 3.36, 27, SAMPLE(3)),
+          ]),
+        },
+        {
+          // Nobody here has been to the booth: the plain card.
+          id: 3,
+          time: '15:10',
+          pool: 'Men A',
+          best_of: 1,
+          team1: pair('Ken & Daiki', [person('Ken Mori', 3.5, 35), person('Daiki Abe', 3.44, 30)]),
+          team2: pair('Tom & Marco', [
+            person('Tom Lee', 3.38, 41),
+            person('Marco Rossi', 3.29, 38),
+          ]),
+        },
+      ];
+      // The court the ref phone is on, and its matches: the rest of this page works on those.
+      let refCourt = 'C1';
+      let monitorCourt = 'C1';
+      let MATCHES = C1_MATCHES;
+      const allMatches = () => Object.values(LINES).flat();
+      const matchById = (id) => allMatches().find((match) => match.id === id);
+      const courtOf = (id) => COURT_NAMES.find((name) => LINES[name].some((row) => row.id === id));
+
+      let sim;
+      let lastStage;
+      let lastShowing;
+
+      function startOver() {
+        const live = {};
+        for (const match of allMatches()) {
+          live[match.id] = {
+            scoring: null,
+            history: [],
+            opened: false,
+            tossed: false,
+            completed: false,
+            signatures: [],
+            savedAt: 0,
+          };
+        }
+        sim = {
+          live,
+          notes: {},
+          clock: 0,
+          index: 0,
+          stage: 'UP_NEXT',
+          mode: sim?.mode ?? 'DISAPPEAR',
+          displayed: null,
+          hidden: null,
+        };
+        // Some courts are already playing when the page starts.
+        for (const row of ALREADY_PLAYING) {
+          const match = matchById(row.id);
+          const scoring = {
+            ...newScoring(
+              match,
+              row.serving,
+              match.id * 100 + row.serving * 10 + row.server,
+              match.id * 100 + (3 - row.serving) * 10,
+            ),
+            current_score1: row.score1,
+            current_score2: row.score2,
+            server_number: row.serverNumber,
+          };
+          Object.assign(live[match.id], {
+            scoring,
+            history: [copy(scoring)],
+            opened: true,
+            tossed: true,
+          });
+        }
+        findStage();
+        lastStage = undefined;
+        lastShowing = undefined;
+        $('log').replaceChildren();
+        sessionStorage.removeItem('ref.pending.demo');
+        openRef();
+        // The monitor starts over too, so it's never older code than the phone.
+        if ($('monitorFrame').src) $('monitorFrame').src = 'court-screen.html?preview=1';
+        update();
+      }
+
+      function openRef(resume = null) {
+        $('refFrame').src =
+          `ref.html?tournament=demo&court=${COURT_NAMES.indexOf(refCourt) + 1}&sandbox=1${resume ? `&resume=${resume}` : ''}`;
+      }
+
+      const isFinished = (live) => live.scoring?.status === 'FINISHED';
+
+      // Where one court has got to: which stage, and which of its matches.
+      function stageOfLine(matches) {
+        const line = matches.map((match, index) => ({ index, live: sim.live[match.id] }));
+        const pick = (stage, row) => ({ stage, index: row.index });
+
+        const playing = line.find((row) => row.live.scoring?.status === 'IN_PROGRESS');
+        if (playing) return pick('SCORE', playing);
+        const waiting = line.filter((row) => !isFinished(row.live));
+        const tossing = waiting.find((row) => row.live.tossLive);
+        if (tossing) return pick('TOSS', tossing);
+        const tossed = waiting.find((row) => row.live.tossed);
+        if (tossed) return pick('PLAYERS', tossed);
+        const opened = waiting.find((row) => row.live.opened);
+        if (opened) return pick('INTRO', opened);
+
+        const refereed = line.filter((row) => isFinished(row.live));
+        if (refereed.length) {
+          const latest = refereed.reduce((a, b) => (b.live.savedAt > a.live.savedAt ? b : a));
+          if (!latest.live.completed) return pick('RESULT', latest);
+        }
+        if (waiting.length) return pick('UP_NEXT', waiting[0]);
+        return { stage: null, index: 0 };
+      }
+
+      function findStage() {
+        Object.assign(sim, stageOfLine(MATCHES));
+      }
+
+      function refereeRow(match) {
+        const live = sim.live[match.id];
+        const players = (team, side) =>
+          team.players.map((player, i) => {
+            const id = match.id * 100 + side * 10 + i;
+            return { id, name: player.name, note: sim.notes[id] ?? null, photo: player.photo };
+          });
+        return {
+          ...RULES,
+          match_id: match.id,
+          start_time: at(match.time),
+          pool: match.pool,
+          best_of: match.best_of,
+          team1: match.team1.name,
+          team2: match.team2.name,
+          team1_players: players(match.team1, 1),
+          team2_players: players(match.team2, 2),
+          ready: true,
+          toss: live.toss ?? null,
+          status: live.scoring?.status ?? 'NOT_STARTED',
+          games: live.scoring?.games ?? [],
+          current_score1: live.scoring?.current_score1 ?? 0,
+          current_score2: live.scoring?.current_score2 ?? 0,
+          undo_steps: Math.max(0, live.history.length - 1),
+        };
+      }
+
+      const copy = (value) => JSON.parse(JSON.stringify(value));
+      const signedFor = (scoring) =>
+        JSON.stringify([
+          scoring?.games,
+          scoring?.current_score1,
+          scoring?.current_score2,
+          scoring?.status,
+        ]);
+
+      function saveScoring(live, body) {
+        if (signedFor(live.scoring) !== signedFor(body)) {
+          live.signatures = [];
+          live.completed = false;
+        }
+        live.scoring = { ...live.scoring, ...body };
+        live.history.push(copy(live.scoring));
+        live.savedAt = ++sim.clock;
+      }
+
+      const newScoring = (match, serving, serverAnchor, receiverAnchor) => ({
+        ...RULES,
+        best_of: match.best_of,
+        id: match.id,
+        match_id: match.id,
+        tournament_id: 0,
+        updated: new Date().toISOString(),
+        games: [],
+        current_score1: 0,
+        current_score2: 0,
+        serving_team: serving,
+        server_number: 2,
+        first_server_team: serving,
+        server_anchor_player_id: serverAnchor,
+        receiver_anchor_player_id: receiverAnchor,
+        current_server_player_id: serverAnchor,
+        status: 'IN_PROGRESS',
+      });
+
+      function answerRef(method, route, body) {
+        const fail = (status, detail) => ({ status, data: { detail } });
+        const ok = (data) => ({ status: 200, data });
+
+        const courtAsked = route.match(/^\/referee\/courts\/(\d+)\/matches$/);
+        if (method === 'GET' && courtAsked) {
+          const name = COURT_NAMES[Number(courtAsked[1]) - 1];
+          return ok({ court_name: name, colors: {}, matches: LINES[name].map(refereeRow) });
+        }
+        const note = route.match(/^\/referee\/players\/(\d+)\/note$/);
+        if (method === 'PUT' && note) {
+          sim.notes[note[1]] = body.note.trim() || null;
+          return ok({ success: true });
+        }
+        const found = route.match(/^\/(?:referee\/)?matches\/(\d+)\/(.+)$/);
+        const match = found && matchById(Number(found[1]));
+        if (!match) return fail(404, 'No such match');
+        const live = sim.live[match.id];
+        const vs = `${match.team1.name} vs ${match.team2.name}`;
+
+        switch (`${method} ${found[2]}`) {
+          case 'GET arrivals':
+            return ok({ data: live.here ?? [] });
+          case 'PUT arrivals':
+            setHere(match, body.player_id, body.here, 'by the ref');
+            return ok({ success: true });
+          case 'POST opened':
+            addLog(`Ref called the players${live.opened ? ' again' : ''}: ${vs}`);
+            live.opened = true;
+            live.calls = (live.calls ?? 0) + 1;
+            live.calledAt = ++sim.clock;
+            live.calling = true;
+            return ok({ success: true });
+          case 'PUT coin_flip':
+            addLog(`Ref flipped the coin: ${body.result === 'HEADS' ? 'heads' : 'tails'}`);
+            live.calling = false;
+            live.tossed = true;
+            return ok({ data: { match_id: match.id, result: body.result } });
+          case 'PUT toss_live':
+            live.tossLive = body.toss;
+            live.tossEvents = body.toss?.events ?? [];
+            if (body.toss) live.calling = false;
+            return ok({ success: true });
+          case 'PUT toss': {
+            const winner = body.call === body.result ? body.caller_team : 3 - body.caller_team;
+            const chose = [
+              [winner, body.winner_choice],
+              [3 - winner, body.loser_choice],
+              [winner, body.winner_second_choice],
+            ].find(([, choice]) => choice === 'SERVE' || choice === 'RECEIVE');
+            const serving = chose[1] === 'SERVE' ? chose[0] : 3 - chose[0];
+            live.toss = { ...body, winner_team: winner, serving_team: serving };
+            live.tossLive = null;
+            live.tossed = true;
+            live.calling = false;
+            const winnerName = winner === 1 ? match.team1.name : match.team2.name;
+            addLog(
+              `${winnerName} won the toss, ${serving === 1 ? match.team1.name : match.team2.name} serve first`,
+            );
+            return ok({ data: live.toss });
+          }
+          case 'GET scoring':
+            return live.scoring
+              ? ok({ data: live.scoring })
+              : fail(404, "This match hasn't been started");
+          case 'POST scoring/start':
+            live.calling = false;
+            // Starting a match already started gives back what's there, as the server does.
+            if (live.scoring) return ok({ data: live.scoring });
+            live.scoring = newScoring(
+              match,
+              body.first_server_team,
+              body.server_anchor_player_id,
+              body.receiver_anchor_player_id,
+            );
+            live.history = [copy(live.scoring)];
+            addLog('Ref started the match');
+            return ok({ data: live.scoring });
+          case 'PUT scoring': {
+            const gamesBefore = live.scoring?.games.length ?? 0;
+            const waitingForServe = gamesBefore > 0 && live.scoring.server_anchor_player_id == null;
+            saveScoring(live, body);
+            if (body.games.length > gamesBefore)
+              addLog(`Game ${body.games.length} over: ${body.games.at(-1).join('–')}`);
+            if (waitingForServe && body.server_anchor_player_id != null) {
+              addLog(
+                `Ref started game ${body.games.length + 1}: ${body.serving_team === 1 ? match.team1.name : match.team2.name} serve`,
+              );
+            }
+            return ok({ data: live.scoring });
+          }
+          case 'POST scoring/undo':
+            if (live.history.length < 2) return fail(400, 'Nothing left to undo');
+            live.history.pop();
+            live.scoring = copy(live.history.at(-1));
+            live.signatures = [];
+            live.completed = false;
+            live.savedAt = ++sim.clock;
+            addLog('Ref pressed Undo');
+            return ok({ data: live.scoring });
+          case 'GET signatures':
+            return ok({ data: live.signatures });
+          case 'PUT signatures': {
+            live.signatures = [body.team1, body.team2]
+              .map((signature, i) => ({
+                team: i + 1,
+                signature,
+                signed_at: new Date().toISOString(),
+              }))
+              .filter((row) => row.signature != null);
+            live.completed = true;
+            const count = live.signatures.length;
+            addLog(`Ref completed the match with ${count} signature${count === 1 ? '' : 's'}`);
+            return ok({ success: true });
+          }
+          default:
+            return fail(404, `The preview doesn't know ${method} ${found[2]}`);
+        }
+      }
+
+      // The ref page's way in, from ref-sandbox.js.
+      window.refRequest = (method, path, text) => {
+        const route = path.replace('/api/tournaments/demo', '');
+        const answer = answerRef(method, route, text ? JSON.parse(text) : null);
+        if (answer.status >= 400 && !(method === 'GET' && route.endsWith('/scoring'))) {
+          addLog(`The ref page asked for something the preview can't do: ${method} ${route}`);
+        }
+        if (method !== 'GET') {
+          findStage();
+          update();
+        }
+        return { status: answer.status, body: JSON.stringify(answer.data) };
+      };
+
+      /* Tapping every rally of a game gets slow when it's the flow being looked at. This jumps
+   the score, then reopens the ref page on it the way a referee picking the match up would. */
+      function skipToGamePoint() {
+        const match = MATCHES[sim.index];
+        const live = sim.live[match.id];
+        const { serving_team: team, current_score1: score1, current_score2: score2 } = live.scoring;
+        const other = team === 1 ? score2 : score1;
+        const own = Math.max(RULES.play_to - 1, other + 1);
+        saveScoring(live, {
+          current_score1: team === 1 ? own : other,
+          current_score2: team === 1 ? other : own,
+        });
+        addLog(
+          `Skipped to game point: ${live.scoring.current_score1}–${live.scoring.current_score2}`,
+        );
+        openRef(match.id);
+        update();
+      }
+
+      const currentKey = () => (sim.stage ? `${sim.stage}:${sim.index}` : null);
+      const isScore = (key) => key != null && key.startsWith('SCORE:');
+
+      function shown() {
+        const current = currentKey();
+        const scoreboard = isScore(current) && sim.hidden !== current;
+        if (sim.mode === 'APPEAR') return { graphic: sim.displayed, scoreboard };
+        return { graphic: isScore(current) || sim.hidden === current ? null : current, scoreboard };
+      }
+
+      function pressShow() {
+        const current = currentKey();
+        if (sim.mode === 'APPEAR' && sim.displayed != null) sim.displayed = null;
+        else if (sim.mode === 'APPEAR' && !isScore(current)) sim.displayed = current;
+        else sim.hidden = sim.hidden === current ? null : current;
+        update();
+      }
+
+      function switchMode() {
+        const current = currentKey();
+        const up = shown().graphic;
+        sim.mode = sim.mode === 'APPEAR' ? 'DISAPPEAR' : 'APPEAR';
+        sim.displayed = sim.mode === 'APPEAR' ? up : null;
+        if (sim.mode === 'DISAPPEAR' && !isScore(current)) sim.hidden = up == null ? current : null;
+        update();
+      }
+
+      // A team's players with who has signed in, for the monitor's cards.
+      const signing = (match, side) => ({
+        players: (side === 1 ? match.team1 : match.team2).players.map((player, i) => {
+          const id = match.id * 100 + side * 10 + i;
+          return { ...player, id, here: (sim.live[match.id].here ?? []).includes(id) };
+        }),
+      });
+
+      function setHere(match, id, here, who) {
+        const live = sim.live[match.id];
+        const others = (live.here ?? []).filter((row) => row !== id);
+        live.here = here ? [...others, id] : others;
+        const players = [...signing(match, 1).players, ...signing(match, 2).players];
+        const { name } = players.find((player) => player.id === id);
+        addLog(`${name} ${here ? 'signed in' : 'taken off'} ${who}`);
+        if (players.every((player) => player.here)) live.calling = false;
+      }
+
+      function graphicState(key, court = refCourt) {
+        const [stage, index] = key.split(':');
+        const line = LINES[court];
+        const match = line[Number(index)];
+        const live = sim.live[match.id];
+        const finished = isFinished(live);
+        const games = finished ? live.scoring.games : [];
+        const won1 = games.filter(([a, b]) => a > b).length;
+        const previous = stage === 'PLAYERS' ? {} : { previous: [] };
+        return {
+          key: `${court}:${key}`,
+          stage,
+          court,
+          pool: match.pool,
+          start_time: at(match.time),
+          team1: { ...match.team1, ...previous, ...(stage === 'INTRO' ? signing(match, 1) : {}) },
+          team2: { ...match.team2, ...previous, ...(stage === 'INTRO' ? signing(match, 2) : {}) },
+          toss_winner: stage === 'PLAYERS' ? (live.toss?.winner_team ?? null) : null,
+          toss: stage === 'TOSS' ? (live.tossLive ?? null) : null,
+          // Stays up through the player cards, until the game starts.
+          toss_events: stage === 'TOSS' || stage === 'PLAYERS' ? (live.tossEvents ?? []) : [],
+          calls: live.calls ?? 0,
+          games,
+          winner: finished ? (won1 * 2 > games.length ? 1 : 2) : null,
+          following:
+            stage === 'UP_NEXT'
+              ? line
+                  .filter((row) => row !== match && !isFinished(sim.live[row.id]))
+                  .map((row) => ({
+                    start_time: at(row.time),
+                    pool: row.pool,
+                    team1: row.team1.name,
+                    team2: row.team2.name,
+                  }))
+              : [],
+        };
+      }
+
+      /* Who's serving and who's receiving, the way the ref page's currentReceiverId works it out:
+   a team's anchor player stands in the even box when its score is even, and the receiver
+   is diagonally opposite the server. Null until the ref has said who stands where. */
+      function serveNames(match, scoring) {
+        const playersOf = (side) =>
+          (side === 1 ? match.team1 : match.team2).players.map((player, i) => ({
+            id: match.id * 100 + side * 10 + i,
+            name: player.name,
+          }));
+        const nameOf = (side, id) => playersOf(side).find((row) => row.id === id)?.name ?? null;
+        const inBox = (side, box) => {
+          const anchor =
+            side === scoring.first_server_team
+              ? scoring.server_anchor_player_id
+              : scoring.receiver_anchor_player_id;
+          if (anchor == null) return null;
+          const score = side === 1 ? scoring.current_score1 : scoring.current_score2;
+          if (box === (score % 2 === 0 ? 'even' : 'odd')) return anchor;
+          return playersOf(side).find((row) => row.id !== anchor)?.id ?? null;
+        };
+        const serving = scoring.serving_team;
+        const serverId = scoring.current_server_player_id;
+        const box = inBox(serving, 'even') === serverId ? 'even' : 'odd';
+        // Left to right looking down the court from the main entrance, which is the bottom of the
+        // screen. The even box is on a team's right:
+        // the team at the far end faces this way, and the near one faces away.
+        const top = 3 - mainEndTeam(match, scoring);
+        const placed = (side) =>
+          (side === top ? ['even', 'odd'] : ['odd', 'even']).map((row) =>
+            nameOf(side, inBox(side, row)),
+          );
+        return {
+          server_name: nameOf(serving, serverId),
+          receiver_name: nameOf(3 - serving, inBox(3 - serving, box)),
+          top_team: top,
+          places: { 1: placed(1), 2: placed(2) },
+        };
+      }
+
+      /* Which team is at the main entrance end right now: where the toss put them, turned
+         after every game and halfway through the last one, the way the ref page does it. */
+      function mainEndTeam(match, scoring) {
+        const end = (sim.live[match.id].tossEvents ?? []).find((row) => row.choice === 'SIDE');
+        const start = end ? (end.end === 'FRONT' ? end.team : 3 - end.team) : 1;
+        const games = scoring.games.length;
+        const lastGame = games + 1 === match.best_of;
+        const halfway =
+          lastGame &&
+          scoring.switch_ends &&
+          Math.max(scoring.current_score1, scoring.current_score2) >=
+            Math.ceil(scoring.play_to / 2);
+        return (games + (halfway ? 1 : 0)) % 2 === 0 ? start : 3 - start;
+      }
+
+      function scoreboardState(match = MATCHES[sim.index]) {
+        const scoring = sim.live[match.id].scoring;
+        return {
+          ...serveNames(match, scoring),
+          team1: match.team1.name,
+          team2: match.team2.name,
+          score1: scoring.current_score1,
+          score2: scoring.current_score2,
+          games1: scoring.games.filter(([a, b]) => a > b).length,
+          games2: scoring.games.filter(([a, b]) => b > a).length,
+          best_of: match.best_of,
+          game_number: scoring.games.length + 1,
+          serving_team: scoring.serving_team,
+          server_number: scoring.server_number,
+          status: scoring.status,
+          division: (match.pool ?? '').replace(/ [A-Z]$/, ''),
+          round: 'Round robin',
+        };
+      }
+
+      function addLog(text) {
+        const row = document.createElement('li');
+        const time = document.createElement('time');
+        time.textContent = new Date().toLocaleTimeString([], { hour12: false });
+        row.append(time, text);
+        $('log').prepend(row);
+        while ($('log').children.length > 10) $('log').lastChild.remove();
+      }
+
+      function update() {
+        const now = shown();
+        const stage = sim.stage;
+        const upKey = now.graphic;
+        const showing = monitoring
+          ? stage
+          : upKey
+            ? upKey.split(':')[0]
+            : now.scoreboard
+              ? 'SCORE'
+              : null;
+
+        if (lastStage === undefined) {
+          addLog(stage ? `Starting at: ${stageInfo(stage).name}` : 'No matches left on this court');
+        } else if (lastStage !== stage) {
+          addLog(stage ? `${stageInfo(stage).name} is ready` : 'No matches left on this court');
+        }
+        if (lastShowing !== undefined && lastShowing !== showing) {
+          addLog(showing ? `On screen: ${stageInfo(showing).name}` : 'Nothing on screen');
+        }
+        lastStage = stage;
+        lastShowing = showing;
+
+        for (const step of $('steps').children) {
+          step.classList.toggle('now', step.dataset.stage === stage);
+          step.classList.toggle('up', step.dataset.stage === showing);
+        }
+        const up = showing != null;
+        const button = $('showButton');
+        button.classList.toggle('hide', up);
+        button.textContent = up
+          ? `Hide ${stageInfo(showing).name.toLowerCase()}`
+          : stage
+            ? `Show ${stageInfo(stage).name.toLowerCase()}`
+            : 'Nothing to show';
+        button.disabled = !up && stage == null;
+        $('modeButton').textContent = `Mode: ${sim.mode === 'APPEAR' ? 'Appear' : 'Disappear'}`;
+        $('skipButton').disabled = stage !== 'SCORE';
+        $('ready').hidden = monitoring || !(upKey != null && upKey !== currentKey());
+
+        $('liveFrame').contentWindow.postMessage(
+          {
+            graphic: upKey ? graphicState(upKey) : null,
+            scoreboard: now.scoreboard ? scoreboardState() : null,
+          },
+          location.origin,
+        );
+        sendMonitor();
+      }
+
+      /* The court monitor: the same stages as the overlay, but always up, with no show or hide.
+   Its browsing pages get made-up pools here, and every court's matches run for real. */
+      let monitoring = false;
+
+      // What one court's own monitor shows.
+      function courtView(court) {
+        const { stage, index } = stageOfLine(LINES[court]);
+        return {
+          graphic: stage ? graphicState(`${stage}:${index}`, court) : null,
+          scoreboard: stage === 'SCORE' ? scoreboardState(LINES[court][index]) : null,
+        };
+      }
+
+      function sendMonitor() {
+        if (!monitoring || sim == null) return;
+        $('monitorFrame').contentWindow.postMessage(
+          { ...courtView(monitorCourt), browse: browseData() },
+          location.origin,
+        );
+      }
+
+      function setMonitorCourt() {
+        monitorCourt = $('monitorCourtPick').value;
+        addLog(`Monitor moved to Court ${monitorCourt}`);
+        sendMonitor();
+      }
+
+      function setRefCourt() {
+        refCourt = $('refCourtPick').value;
+        MATCHES = LINES[refCourt];
+        sim.displayed = null;
+        sim.hidden = null;
+        findStage();
+        lastStage = undefined;
+        lastShowing = undefined;
+        addLog(`Ref phone moved to Court ${refCourt}`);
+        openRef();
+        update();
+      }
+
+      function setMonitorTimer() {
+        $('monitorFrame').contentWindow.postMessage(
+          { timerSeconds: Number($('timerSeconds').value) },
+          location.origin,
+        );
+      }
+
+      const MEI = 'Mei & Hana';
+      const YUNA = 'Yuna & Lena';
+      const AIKO = 'Aiko & Rin';
+      const SOFIA = 'Sofia & Nina';
+      const KAYA = 'Kaya & Mio';
+      const KEN = 'Ken & Daiki';
+      const TOM = 'Tom & Marco';
+      const JUN = 'Jun & Sota';
+      const ALEX = 'Alex & Ben';
+      const MIXED1 = 'Mei & Ken';
+      const MIXED2 = 'Yuna & Tom';
+      const MIXED3 = 'Rin & Daiki';
+      const MIXED4 = 'Hana & Marco';
+      const SAMPLE_TEAMS = {
+        [KAYA]: [person('Kaya Ono', 3.22, 25), person('Mio Hara', 3.15, 30)],
+        [JUN]: [person('Jun Kato', 3.41, 37), person('Sota Ueda', 3.33, 33)],
+        [ALEX]: [person('Alex Chen', 3.25, 29), person('Ben Wright', 3.31, 44)],
+        [MIXED1]: [person('Mei Suzuki', 3.32, 28), person('Ken Mori', 3.5, 35)],
+        [MIXED2]: [person('Yuna Park', 3.05, 26), person('Tom Lee', 3.38, 41)],
+        [MIXED3]: [person('Rin Ito', 3.27, 29), person('Daiki Abe', 3.44, 30)],
+        [MIXED4]: [person('Hana Sato', 3.18, 31), person('Marco Rossi', 3.29, 38)],
+      };
+      const knownTeams = Object.fromEntries(
+        C1_MATCHES.flatMap((match) => [match.team1, match.team2]).map((team) => [team.name, team]),
+      );
+      const teamNamed = (name) => knownTeams[name] ?? pair(name, SAMPLE_TEAMS[name]);
+      const lineMatch = (id, time, pool, team1, team2) => ({
+        id,
+        time,
+        pool,
+        best_of: 1,
+        team1: teamNamed(team1),
+        team2: teamNamed(team2),
+      });
+      const LINES = {
+        C1: C1_MATCHES,
+        C2: [
+          lineMatch(4, '15:30', 'Women B', AIKO, KAYA),
+          lineMatch(5, '16:10', 'Women B', SOFIA, KAYA),
+        ],
+        C3: [
+          lineMatch(6, '15:30', 'Men A', TOM, ALEX),
+          lineMatch(7, '15:50', 'Men A', KEN, ALEX),
+          lineMatch(8, '16:10', 'Men A', TOM, JUN),
+        ],
+        A1: [lineMatch(9, '15:50', 'Mixed', MIXED1, MIXED3)],
+        A2: [lineMatch(10, '16:10', 'Mixed', MIXED2, MIXED4)],
+        A3: [lineMatch(11, '16:30', 'Mixed', MIXED1, MIXED4)],
+      };
+      const COURT_NAMES = Object.keys(LINES);
+      const ALREADY_PLAYING = [
+        { id: 4, score1: 4, score2: 9, serving: 2, serverNumber: 1, server: 0 },
+        { id: 6, score1: 10, score2: 10, serving: 1, serverNumber: 2, server: 1 },
+        { id: 10, score1: 2, score2: 1, serving: 1, serverNumber: 2, server: 0 },
+      ];
+      const played = (time, court, team1, team2, games) => ({
+        time,
+        court,
+        team1,
+        team2,
+        state: 'done',
+        games,
+      });
+      const SAMPLE_POOLS = [
+        {
+          name: 'Women B',
+          teams: [MEI, YUNA, AIKO, SOFIA, KAYA],
+          matches: [
+            played('11:30', 'C1', MEI, AIKO, [[11, 8]]),
+            played('11:50', 'C1', YUNA, SOFIA, [[11, 9]]),
+            played('12:30', 'C2', MEI, SOFIA, [[8, 11]]),
+            played('12:50', 'C2', YUNA, AIKO, [[10, 12]]),
+            played('13:30', 'C1', MEI, KAYA, [[11, 9]]),
+            played('13:50', 'C1', YUNA, KAYA, [[5, 11]]),
+            { fromRef: 1 },
+            { fromRef: 2 },
+            { fromRef: 4 },
+            { fromRef: 5 },
+          ],
+        },
+        {
+          name: 'Men A',
+          teams: [KEN, TOM, JUN, ALEX],
+          matches: [
+            played('13:10', 'C3', JUN, ALEX, [[11, 7]]),
+            played('13:30', 'C3', KEN, JUN, [[11, 9]]),
+            { fromRef: 3 },
+            { fromRef: 6 },
+            { fromRef: 7 },
+            { fromRef: 8 },
+          ],
+        },
+        {
+          name: 'Mixed',
+          teams: [MIXED1, MIXED2, MIXED3, MIXED4],
+          matches: [
+            played('14:00', 'A1', MIXED1, MIXED2, [[11, 8]]),
+            played('14:20', 'A1', MIXED3, MIXED4, [[6, 11]]),
+            { fromRef: 9 },
+            { fromRef: 10 },
+            { fromRef: 11 },
+          ],
+        },
+      ];
+      const tie = (label, court, time, team1, team2, score1, score2) => ({
+        label,
+        court,
+        time,
+        team1,
+        team2,
+        score1,
+        score2,
+      });
+      const SAMPLE_BRACKETS = [
+        {
+          name: 'Women',
+          rounds: [
+            {
+              name: 'Semi-finals',
+              matches: [
+                tie('SF1', 'C1', '17:00', MEI, SOFIA),
+                tie('SF2', 'C2', '17:00', AIKO, YUNA),
+              ],
+            },
+            { name: 'Final', matches: [tie('Final', 'C1', '18:00', null, null)] },
+          ],
+        },
+        {
+          name: 'Men',
+          rounds: [
+            {
+              name: 'Quarter-finals',
+              matches: [
+                tie('QF1', 'A1', '16:30', KEN, ALEX, 11, 6),
+                tie('QF2', 'A2', '16:30', TOM, JUN, 8, 11),
+                tie('QF3', 'A3', '16:50', null, null),
+                tie('QF4', 'A3', '17:10', null, null),
+              ],
+            },
+            {
+              name: 'Semi-finals',
+              matches: [tie('SF1', 'A1', '17:30', KEN, JUN), tie('SF2', 'A2', '17:30', null, null)],
+            },
+            { name: 'Final', matches: [tie('Final', 'A1', '18:30', null, null)] },
+          ],
+        },
+      ];
+
+      // One match, as far as its ref has got with it.
+      function refMatch(id) {
+        const match = matchById(id);
+        const scoring = sim.live[id].scoring;
+        const row = {
+          time: match.time,
+          court: courtOf(id),
+          team1: match.team1.name,
+          team2: match.team2.name,
+          state: 'coming',
+          games: [],
+        };
+        if (scoring?.status === 'FINISHED') return { ...row, state: 'done', games: scoring.games };
+        if (scoring?.status === 'IN_PROGRESS') {
+          return {
+            ...row,
+            state: 'live',
+            games: scoring.games,
+            score1: scoring.current_score1,
+            score2: scoring.current_score2,
+          };
+        }
+        return row;
+      }
+
+      function browseData() {
+        const teams = {};
+        for (const match of allMatches()) {
+          teams[match.team1.name] = { players: match.team1.players };
+          teams[match.team2.name] = { players: match.team2.players };
+        }
+        for (const [name, players] of Object.entries(SAMPLE_TEAMS)) teams[name] = { players };
+        return {
+          court: monitorCourt,
+          // Every match whose players were called and haven't started their toss, newest first.
+          // Whatever else its court is doing: a press of Call always shows.
+          calls: COURT_NAMES.flatMap((court) =>
+            LINES[court]
+              .filter((match) => sim.live[match.id].calling)
+              .map((match) => ({
+                court,
+                team1: match.team1.name,
+                team2: match.team2.name,
+                calls: sim.live[match.id].calls,
+                calledAt: sim.live[match.id].calledAt,
+              })),
+          ).sort((a, b) => b.calledAt - a.calledAt),
+          teams,
+          pools: SAMPLE_POOLS.map((pool) => ({
+            ...pool,
+            matches: pool.matches.map((row) => (row.fromRef ? refMatch(row.fromRef) : row)),
+          })),
+          brackets: SAMPLE_BRACKETS,
+          courts: COURT_NAMES.map((name) => {
+            const line = LINES[name].map((match) => refMatch(match.id));
+            return {
+              name,
+              playing: line.find((row) => row.state === 'live') ?? null,
+              next: line.find((row) => row.state === 'coming') ?? null,
+              ...courtView(name),
+            };
+          }),
+        };
+      }
+
+      window.addEventListener('message', (event) => {
+        if (event.origin !== location.origin) return;
+        if (event.data?.monitorLog) addLog(event.data.monitorLog);
+        if (event.data?.signIn) {
+          const id = event.data.signIn;
+          const match = matchById(Math.floor(id / 100));
+          setHere(match, id, !(sim.live[match.id].here ?? []).includes(id), 'on the monitor');
+          update();
+        }
+      });
+
+      function setView(pairingNow, monitorNow = false) {
+        pairing = pairingNow;
+        monitoring = monitorNow;
+        $('list').hidden = pairing;
+        $('pair').hidden = !pairing;
+        $('bar').classList.toggle('pairing', pairing);
+        $('viewAll').classList.toggle('on', !pairing);
+        $('viewRef').classList.toggle('on', pairing && !monitoring);
+        $('viewMonitor').classList.toggle('on', monitoring);
+        $('liveBox').hidden = monitoring;
+        $('monitorBox').hidden = !monitoring;
+        $('showButton').hidden = monitoring;
+        $('modeButton').hidden = monitoring;
+        $('timerBox').hidden = !monitoring;
+        $('monitorCourtBox').hidden = !monitoring;
+        $('refCourtBox').hidden = !monitoring;
+        $('screenTitle').textContent = monitoring
+          ? 'The court monitor: tap it'
+          : 'What viewers see';
+        if (monitoring && !$('monitorFrame').src) {
+          $('monitorFrame').src = 'court-screen.html?preview=1';
+        }
+        if (pairing && sim == null) startOver();
+        else if (pairing) update();
+        window.scrollTo(0, 0);
+      }
+
+      $('steps').innerHTML = STAGES.map(
+        (row) => `<li data-stage="${row.stage}"><b>${row.name}</b>${row.cause}</li>`,
+      ).join('');
+      for (const id of ['monitorCourtPick', 'refCourtPick']) {
+        $(id).innerHTML = COURT_NAMES.map(
+          (name) => `<option value="${name}">Court ${name}</option>`,
+        ).join('');
+      }
+      $('liveFrame').addEventListener('load', () => {
+        if (sim != null) update();
+      });
+
+      $('placeBox').replaceWith(placeControls($('liveFrame')));
+      $('monitorFrame').addEventListener('load', () => {
+        if (!$('monitorFrame').src) return;
+        setMonitorTimer();
+        sendMonitor();
+      });
+      /* ─────────────── ref practice ─────────────── */
+      function showScreen(name) {
+        $('liveBox').hidden = name !== 'live';
+        $('monitorBox').hidden = name !== 'monitor';
+        for (const button of document.querySelectorAll('.pswitch button')) {
+          button.classList.toggle('on', button.dataset.screen === name);
+        }
+        // A frame that was hidden measured itself at nothing: have it measure again.
+        const frame = name === 'live' ? $('liveFrame') : $('monitorFrame');
+        try {
+          frame.contentWindow.dispatchEvent(new Event('resize'));
+        } catch {
+          // Not loaded yet: it measures itself when it is.
+        }
+      }
+
+      function startPractice() {
+        document.body.classList.add('practice');
+        document.title = 'Ref practice';
+        // Both screens follow the ref: the stream on its own, the monitor always up.
+        setView(true, true);
+        $('pScreen').append($('liveBox'), $('monitorBox'));
+        $('pRef').append(document.querySelector('#pair .phone'));
+        showScreen('monitor');
+        const followRef = update;
+        update = function () {
+          followRef();
+          $('pSkip').disabled = sim.stage !== 'SCORE';
+        };
+        update();
+      }
+
+      startPractice();
+    </script>
+  </body>
+</html>

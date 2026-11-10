@@ -1,0 +1,2426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"
+    />
+    <meta name="theme-color" content="#b4c9ea" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <title>Referee</title>
+    <script src="ref-sandbox.js"></script>
+    <script>
+      // This phone picked the classic layout: open that instead (see switchLayout).
+      try {
+        if (localStorage.getItem('ref.ui') === 'classic') {
+          location.replace('ref-classic.html' + location.search + location.hash);
+        }
+      } catch (e) {}
+    </script>
+    <!--
+  Referee scoring.
+
+  A plain page rather than part of the React app on purpose: the scoring logic
+  is lifted from the DrillYard scoreboard app, where it has been used in real
+  matches. Rewriting it as components would mean reintroducing bugs into the one
+  part that must not have them.
+
+  What changed from the original: it gets the match from Bracket instead of
+  having names typed in, and sends the score to Bracket instead of rewriting an
+  SVG file. The rules below are unchanged.
+-->
+    <style>
+      :root {
+        --fg: #0b1530;
+        --dim: #44506b;
+        --line: rgba(30, 58, 138, 0.14);
+        --ok: #15803d;
+        --warn: #e8a317;
+        --bad: #b91c1c;
+        --chip: rgba(255, 255, 255, 0.74);
+        --chip-edge: rgba(255, 255, 255, 0.95);
+        --glass: rgba(255, 255, 255, 0.5);
+        --glass-edge: rgba(255, 255, 255, 0.8);
+        --shadow: 0 4px 14px rgba(36, 58, 110, 0.09);
+        --navy: linear-gradient(180deg, #1d3f86, #12306b);
+        --surround: #6f8f57;
+        --service: #3a3fc4;
+        --kitchen: #3a6aa6;
+        --courtline: #f4f6ff;
+        --netline: #16213a;
+        --sky:
+          radial-gradient(500px 360px at 90% -6%, rgba(255, 210, 168, 0.9), transparent 62%),
+          radial-gradient(420px 420px at -10% 105%, rgba(110, 150, 225, 0.55), transparent 60%),
+          linear-gradient(180deg, #b4c9ea 0%, #d8e2f2 50%, #f2e4dc 100%);
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html {
+        min-height: 100%;
+        background: var(--sky) fixed;
+      }
+      html,
+      body {
+        margin: 0;
+        color: var(--fg);
+        font:
+          16px/1.4 'Plus Jakarta Sans',
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+        overscroll-behavior: none;
+      }
+      body {
+        padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+      }
+
+      button {
+        font: inherit;
+        color: inherit;
+        background: var(--chip);
+        border: 1px solid var(--chip-edge);
+        border-radius: 16px;
+        padding: 12px 16px;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      button.primary {
+        background: var(--navy);
+        border-color: transparent;
+        color: #fff;
+        font-weight: 700;
+        box-shadow: 0 8px 18px rgba(18, 48, 107, 0.3);
+      }
+      button.ghost {
+        background: none;
+        border-color: transparent;
+        color: var(--dim);
+        box-shadow: none;
+      }
+      button[disabled] {
+        opacity: 0.35;
+      }
+      /* Which side of the referee the main entrance is on: two buttons, one lit. */
+      .entrance {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 14px;
+        color: var(--dim);
+      }
+      .entrance span {
+        flex: none;
+      }
+      .entrance button {
+        flex: 1;
+        height: 40px;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 0 8px;
+      }
+      .entrance button.on {
+        background: var(--navy);
+        border-color: transparent;
+        color: #fff;
+      }
+      .glass {
+        background: var(--glass);
+        border: 1px solid var(--glass-edge);
+        border-radius: 24px;
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        backdrop-filter: blur(22px) saturate(140%);
+        box-shadow:
+          0 12px 32px rgba(36, 58, 110, 0.13),
+          inset 0 1px 0 rgba(255, 255, 255, 0.95);
+      }
+
+      .wrap {
+        padding: 18px 16px;
+        max-width: 620px;
+        margin: 0 auto;
+      }
+      .muted {
+        color: var(--dim);
+        font-size: 14px;
+      }
+      .err {
+        color: var(--bad);
+        font-size: 14px;
+        min-height: 20px;
+        margin-top: 8px;
+      }
+
+      /* team badge: initials on a colour picked from the name */
+      .tb {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border-radius: 50%;
+        color: #fff;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .ball {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: radial-gradient(circle at 35% 30%, #fff6a8, #f5c518 60%, #d9a600);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+      }
+      .tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        color: var(--fg);
+        border-radius: 12px;
+        box-shadow: 0 6px 14px rgba(16, 36, 90, 0.28);
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* password */
+      .gate {
+        margin-top: 24px;
+        padding: 24px 20px;
+      }
+      .gate .practice {
+        display: block;
+        margin-top: 14px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      .gate h1 {
+        font-size: 28px;
+        font-weight: 800;
+        margin: 0 0 6px;
+      }
+      .gate input {
+        width: 100%;
+        font: inherit;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid var(--chip-edge);
+        background: #fff;
+        color: var(--fg);
+        margin: 16px 0 12px;
+      }
+      .gate button {
+        width: 100%;
+        height: 52px;
+      }
+
+      /* court's day */
+      .dayhead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .kicker {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dim);
+      }
+      .dayhead h1 {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 800;
+        line-height: 1.15;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 16px;
+        background: var(--chip);
+        border: 1px solid var(--chip-edge);
+        box-shadow: var(--shadow);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ok);
+        white-space: nowrap;
+      }
+      .status::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+      .status.off {
+        color: #92400e;
+      }
+      .status.off::before {
+        background: var(--warn);
+      }
+      h3.sec {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--dim);
+        margin: 20px 0 8px;
+        font-weight: 700;
+      }
+      /* One card per match: the time and pool on top, then both teams drawn the
+   same way, each with its players' faces and its score. */
+      .mcard {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        padding: 12px 14px;
+        text-align: left;
+        margin-bottom: 10px;
+      }
+      .mtop {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--dim);
+      }
+      .mtop .when {
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--fg);
+        font-variant-numeric: tabular-nums;
+      }
+      .mtop .meta {
+        min-width: 0;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .trow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .trow + .trow {
+        padding-top: 8px;
+        border-top: 1px solid var(--chip-edge);
+      }
+      .faces {
+        display: flex;
+        flex-shrink: 0;
+      }
+      .face {
+        position: relative;
+        display: block;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #dfe6f3;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 4px rgba(11, 21, 48, 0.18);
+      }
+      .face + .face {
+        margin-left: -12px;
+      }
+      .face .tb {
+        width: 100% !important;
+        height: 100% !important;
+      }
+      .face.has .tb {
+        visibility: hidden;
+      }
+      /* Cut-outs are the whole player, so zoom in on the head; a flat photo just fills the circle. */
+      .face img {
+        position: absolute;
+        top: 3%;
+        left: -50%;
+        width: 200%;
+        max-width: none;
+      }
+      .face img.flat {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: 50% 25%;
+      }
+      .tn {
+        flex: 1;
+        min-width: 0;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sc {
+        display: flex;
+        gap: 10px;
+        flex-shrink: 0;
+        font-size: 17px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+      .sc .lost {
+        color: var(--dim);
+        font-weight: 600;
+      }
+      .mcard.live .face {
+        width: 44px;
+        height: 44px;
+      }
+      .mcard.live .tn {
+        font-size: 18px;
+      }
+      .mcard.live .sc {
+        font-size: 30px;
+        line-height: 1;
+      }
+      .livetag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #15803d;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .livetag::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+      .navybar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 48px;
+        margin-top: 4px;
+        border-radius: 14px;
+        background: var(--navy);
+        color: #fff;
+        font-weight: 700;
+      }
+      .mcard.done {
+        padding: 10px 14px;
+        gap: 6px;
+      }
+      .mcard.done .face {
+        width: 30px;
+        height: 30px;
+      }
+      .mcard.done .tn {
+        font-size: 15px;
+      }
+      .mcard.tbd {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .wait {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      /* match header */
+      .mhead {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .iconbtn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        flex-shrink: 0;
+      }
+      .mtitle {
+        flex: 1;
+        min-width: 0;
+      }
+      .mtitle .h {
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      .mtitle .sub {
+        font-size: 12px;
+        color: var(--dim);
+      }
+      .call {
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .call span {
+        color: #6b7fa8;
+      }
+      .games {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .game {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dim);
+        background: var(--chip);
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* The court, to scale: 20 ft wide, 44 ft long, each half a 15 ft service area
+     and a 7 ft kitchen, colours as painted. Every line is the edge of the box
+     beside it, so nothing drawn on the court can sit on a line. */
+      .court {
+        display: flex;
+        justify-content: center;
+        padding: 16px;
+        border-radius: 22px;
+        color: #fff;
+        background: var(--surround);
+        box-shadow: 0 16px 30px rgba(20, 44, 100, 0.25);
+      }
+      .surface {
+        display: grid;
+        border: 3px solid var(--courtline);
+      }
+      /* Upright: as tall as the screen allows, width following the 20:44 shape. */
+      .as-stack .surface {
+        grid-template-rows: 1fr 3px 1fr;
+        aspect-ratio: 20 / 44;
+        height: min(calc(100dvh - 210px), calc((100vw - 70px) * 2.2), 640px);
+        min-height: 300px;
+      }
+      .as-side .surface {
+        grid-template-columns: 1fr 3px 1fr;
+        aspect-ratio: 44 / 20;
+        width: 100%;
+      }
+      /* A phone held upright: the court gives up its true shape to fill the screen,
+     so each half (the "won rally" button) is as big as a thumb could want.
+     fitCourt() sets the height to reach down to the buttons under it. */
+      @media (orientation: portrait) and (max-width: 700px) {
+        .wrap {
+          padding: 12px 10px;
+        }
+        .court {
+          padding: 8px;
+          border-radius: 18px;
+        }
+        .as-stack .surface {
+          aspect-ratio: auto;
+          width: 100%;
+          min-height: 320px;
+        }
+      }
+      /* The net is a line; its posts stand just outside the sidelines. */
+      .net {
+        position: relative;
+        background: var(--netline);
+      }
+      .net::before {
+        content: '';
+        position: absolute;
+        background: var(--netline);
+        border-radius: 2px;
+      }
+      .as-stack .net::before {
+        top: -1px;
+        bottom: -1px;
+        left: -12px;
+        right: -12px;
+      }
+      .as-side .net::before {
+        left: -1px;
+        right: -1px;
+        top: -12px;
+        bottom: -12px;
+      }
+      .half {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        color: #fff;
+        text-align: center;
+      }
+      .as-side .half {
+        flex-direction: row;
+      }
+      .half:active {
+        transform: none;
+        filter: brightness(1.12);
+      }
+      .half[disabled] {
+        opacity: 1;
+      }
+      /* service boxes; the line between them is the centre line */
+      .svc {
+        flex: 15 1 0;
+        display: flex;
+        min-width: 0;
+        min-height: 0;
+        background: var(--service);
+      }
+      .as-side .svc {
+        flex-direction: column;
+      }
+      .as-stack .who + .who {
+        border-left: 3px solid var(--courtline);
+      }
+      .as-side .who + .who {
+        border-top: 3px solid var(--courtline);
+      }
+      /* Names shrink with their box (cq units) before they ever have to break. */
+      .who {
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 8px 4px;
+        overflow-wrap: anywhere;
+        container: who / size;
+      }
+      .facewrap {
+        position: relative;
+        flex-shrink: 0;
+      }
+      .who .face {
+        width: clamp(24px, 24cqi, 44px);
+        height: auto;
+        aspect-ratio: 1;
+      }
+      .facewrap .ball {
+        position: absolute;
+        right: -5px;
+        bottom: -2px;
+        width: 14px;
+        height: 14px;
+      }
+      /* A box too short for a photo and the words drops the photo; the ball stays. */
+      @container who (max-height: 76px) {
+        .facewrap .face {
+          display: none;
+        }
+        .facewrap .ball {
+          position: static;
+          width: 16px;
+          height: 16px;
+        }
+      }
+      .half {
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+      }
+      .half .tile {
+        text-shadow: none;
+      }
+      .pn {
+        font-size: clamp(13px, 19cqi, 18px);
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .tag {
+        font-size: clamp(10px, 13cqi, 12px);
+        font-weight: 500;
+      }
+      .pnote {
+        font-size: 11px;
+        font-weight: 600;
+        color: #ffe08a;
+      }
+      /* the kitchen, against the net; its far edge is the kitchen line */
+      .kz {
+        flex: 7 1 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        min-width: 0;
+        min-height: 0;
+        background: var(--kitchen);
+      }
+      .as-stack .first .kz {
+        border-top: 3px solid var(--courtline);
+      }
+      .as-stack .second .kz {
+        border-bottom: 3px solid var(--courtline);
+      }
+      .as-side .first .kz {
+        border-left: 3px solid var(--courtline);
+      }
+      .as-side .second .kz {
+        border-right: 3px solid var(--courtline);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+        padding: 5px 12px 5px 5px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        background: rgba(10, 20, 60, 0.28);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        text-transform: uppercase;
+        text-align: left;
+      }
+      .pill .tile {
+        width: 30px;
+        height: 30px;
+        font-size: 17px;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      .pill .pl {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      /* Side by side the kitchen is a narrow strip: just the score (or badge) shows,
+     and the words stay for screen readers. */
+      .as-side .pill {
+        padding: 0;
+        border: 0;
+        background: none;
+      }
+      .as-side .pill .pl {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .actions button {
+        flex: 1;
+        min-width: 0;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        padding: 0 10px;
+        white-space: nowrap;
+      }
+      @media (max-width: 369px) {
+        .actions button {
+          font-size: 14px;
+        }
+        .actions button:not(.iconbtn) svg {
+          display: none;
+        }
+      }
+      .actions button.primary {
+        flex: 1.5;
+      }
+      .actions .iconbtn {
+        flex: 0 0 56px;
+        width: 56px;
+        height: 56px;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--dim);
+        margin-top: 8px;
+      }
+      .banner {
+        background: var(--ok);
+        color: #fff;
+        font-weight: 700;
+        text-align: center;
+        padding: 12px;
+        border-radius: 14px;
+        margin-bottom: 10px;
+      }
+      .strip {
+        background: var(--warn);
+        color: #1a1400;
+        text-align: center;
+        padding: 8px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .so {
+        background: var(--warn);
+        color: #1a1400;
+        text-align: center;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        padding: 8px;
+        border-radius: 12px;
+        margin-bottom: 10px;
+      }
+      .so.switch {
+        background: var(--navy);
+        color: #fff;
+        letter-spacing: 0.02em;
+      }
+      .warnbox {
+        background: rgba(232, 163, 23, 0.15);
+        color: #92400e;
+        border: 1px solid var(--warn);
+        border-radius: 12px;
+        padding: 10px;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      /* coin */
+      .coin {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        font-weight: 800;
+        color: #5b4300;
+        background: radial-gradient(circle at 35% 30%, #fff3b0, #e9c46a 60%, #c79a2c);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .tossbtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        height: 52px;
+        margin-bottom: 12px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .coincard {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 28px 16px 22px;
+        text-align: center;
+      }
+      .flipcoin {
+        padding: 0;
+        border: 0;
+        background: none;
+        box-shadow: none;
+        border-radius: 50%;
+      }
+      .flipcoin:active {
+        transform: scale(0.96);
+      }
+      .flipcoin:focus-visible {
+        outline: 3px solid #1e3a8a;
+        outline-offset: 6px;
+      }
+      .coin.big {
+        width: 160px;
+        height: 160px;
+        font-size: 72px;
+        box-shadow: 0 12px 28px rgba(91, 67, 0, 0.3);
+      }
+      .coin.spin {
+        animation: flip 0.7s ease-out;
+      }
+      @keyframes flip {
+        from {
+          transform: rotateY(1440deg) scale(0.7);
+        }
+        to {
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .coin.spin {
+          animation: none;
+        }
+      }
+      .coinresult {
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .fixbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(232, 163, 23, 0.18);
+        border: 1px solid var(--warn);
+        color: #5c3a00;
+        border-radius: 14px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+      .fixbar button {
+        flex-shrink: 0;
+        padding: 10px 16px;
+      }
+
+      /* who's who */
+      .who-sheet {
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .whohead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .whoteam {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--dim);
+        font-weight: 700;
+        margin: 10px 0 6px;
+      }
+      .whorow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .whoname {
+        flex: 0 0 5.5rem;
+        font-weight: 600;
+      }
+      .whorow input {
+        flex: 1 1 0;
+        min-width: 0;
+        font: inherit;
+        padding: 9px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--fg);
+      }
+
+      /* typing a result in */
+      .typein {
+        margin-top: 18px;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+      .typerow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .typerow span {
+        flex: 0 0 4.5rem;
+        font-size: 13px;
+      }
+      /* min-width:0 or the inputs refuse to shrink and the row runs off the edge */
+      .typerow input {
+        flex: 1 1 0;
+        min-width: 0;
+        font: inherit;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--fg);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Teams changing ends: a pop-up the referee has to clear, so it can't be missed. */
+      .endspop {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: rgba(8, 16, 36, 0.72);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        animation: endsin 0.2s ease-out;
+      }
+      .endscard {
+        background: #fff;
+        color: #0b1b3a;
+        border-radius: 20px;
+        padding: 28px 22px 22px;
+        width: 100%;
+        max-width: 420px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      .endsicon {
+        font-size: 60px;
+        line-height: 1;
+      }
+      .endst {
+        font-size: 34px;
+        font-weight: 800;
+        margin: 10px 0 6px;
+      }
+      .endsd {
+        font-size: 18px;
+        line-height: 1.35;
+        margin: 0 0 22px;
+      }
+      .endscard button {
+        width: 100%;
+        min-height: 60px;
+        font-size: 22px;
+      }
+      @keyframes endsin {
+        from {
+          opacity: 0;
+          transform: scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .endspop {
+          animation: none;
+        }
+      }
+      /* Older browsers, like the Radxa boards' Chromium 120, draw this blur as white blocks. */
+      @supports not (width: round(1px, 1px)) {
+        * {
+          -webkit-backdrop-filter: none !important;
+          backdrop-filter: none !important;
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="ref-sign.css" />
+    <script src="ref-sign.js" defer></script>
+    <link rel="stylesheet" href="ref-toss.css" />
+    <script src="ref-toss.js"></script>
+  </head>
+  <body>
+    <div id="strip"></div>
+    <div id="app" class="wrap"></div>
+
+    <script>
+      /* ─────────────── where we are ─────────────── */
+      const params = new URLSearchParams(location.search);
+      const TOURNAMENT = params.get('tournament');
+      const COURT = params.get('court');
+      const OPEN_MATCH = params.get('match'); // opened straight from the results page
+      const RESUME = params.get('resume'); // reopen this match: the layout was just switched
+      const PW_KEY = `ref.pw.${TOURNAMENT}`;
+      const PENDING_KEY = `ref.pending.${TOURNAMENT}`;
+
+      let password = localStorage.getItem(PW_KEY) || '';
+      let court = null; // {court_name, matches:[...]}
+      let match = null; // the one being scored
+      let error = '';
+
+      /* ─────────────── live state of the match in hand ─────────────── */
+      let games = [],
+        s1 = 0,
+        s2 = 0,
+        serving = 1,
+        serverNum = 2,
+        firstServer = 1;
+      let gameOver = false,
+        matchOver = false,
+        sideOutFlash = false,
+        typing = false;
+      /* Setup, before Start is pressed. The referee is the only one who can know any
+   of this — it's decided by a spin at the net. */
+      let setup = null; // {servingTeam, serverAnchorId, receiverAnchorId}
+      let whoOpen = false;
+      let serverAnchorId = null,
+        receiverAnchorId = null,
+        currentServerId_ = null;
+      /* How the two courts are drawn, matching how the referee is looking at the real
+   court. One button, two layouts.
+
+     stack  the net runs across the screen, one court above the other
+     side   the net runs down the screen, courts left and right
+
+   The even court is on a player's right as they face the net, so which way the
+   arrow points falls out of the layout and which court is which.
+*/
+      let layout = localStorage.getItem('ref.layout') === 'side' ? 'side' : 'stack';
+      let flipped = localStorage.getItem('ref.flip') === '1';
+      /* Which side of the referee the main entrance is on, standing at the net post.
+   The toss puts each team at its end by it. Changing it, before the game or in the
+   middle of it, turns the drawing round: the court is the same, only the referee
+   had it the wrong way. */
+      let entranceRight = localStorage.getItem('ref.entrance') !== 'left';
+      function setEntrance(right) {
+        if (right === entranceRight) return;
+        entranceRight = right;
+        localStorage.setItem('ref.entrance', right ? 'right' : 'left');
+        flipped = !flipped;
+        localStorage.setItem('ref.flip', flipped ? '1' : '0');
+        render();
+      }
+      function entranceToggle() {
+        return `<div class="entrance"><span>Main entrance</span>
+      <button class="${entranceRight ? '' : 'on'}" onclick="setEntrance(false)">On my left</button>
+      <button class="${entranceRight ? 'on' : ''}" onclick="setEntrance(true)">On my right</button>
+    </div>`;
+      }
+      /* Switching ends mid-game turns the drawing half a turn: every player lands in
+   the box diagonally opposite, and the arrows turn with them. */
+      function flippedNow() {
+        return flipped !== endsSwitched();
+      }
+
+      /* The pool's rules can have teams change ends mid-way through the last game
+   (the only game, or game three of a best-of-three) once a team reaches half the
+   target: 6 in a game to 11, 8 to 15, 11 to 21. Worked out from the score, never
+   stored, so undo and a referee taking the court over both get it right. */
+      function switchEndsAt() {
+        return Math.ceil(match.play_to / 2);
+      }
+      function endsSwitched() {
+        if (!match || !match.switch_ends) return false;
+        const gameNo = matchOver ? games.length : games.length + 1;
+        return gameNo === match.best_of && Math.max(s1, s2) >= switchEndsAt();
+      }
+      let switchFlash = false;
+
+      /* first = the court drawn top (stacked) or left (side by side) */
+      function arrowFor(isFirstSlot) {
+        const near = isFirstSlot !== flippedNow();
+        if (layout === 'stack') return near ? '←' : '→'; // top faces down, right is screen-left
+        return near ? '↓' : '↑'; // left faces right, right is screen-down
+      }
+      /* Which box is which, in screen order: left→right when stacked, top→bottom
+   side by side. Falls straight out of arrowFor. */
+      function boxOrder(team) {
+        const even = arrowFor(team === 1);
+        const evenFirst = layout === 'stack' ? even === '←' : even === '↑';
+        return evenFirst ? ['even', 'odd'] : ['odd', 'even'];
+      }
+      /* Rotate turns the drawing a quarter turn clockwise, so the referee can match
+   it to the real court from wherever they stand. */
+      const ROTATIONS = [
+        ['stack', false],
+        ['side', true],
+        ['stack', true],
+        ['side', false],
+      ];
+      function rotateCourt() {
+        const i = ROTATIONS.findIndex(([l, f]) => l === layout && f === flipped);
+        [layout, flipped] = ROTATIONS[(i + 1) % ROTATIONS.length];
+        localStorage.setItem('ref.layout', layout);
+        localStorage.setItem('ref.flip', flipped ? '1' : '0');
+        render();
+      }
+      let undoSteps = 0;
+
+      /* ─────────────── talking to Bracket ─────────────── */
+      /* A referee has the event password. An organizer opening a match from the
+   results page is already logged in and shouldn't have to know it. */
+      function organiserToken() {
+        try {
+          return JSON.parse(localStorage.getItem('login') || 'null')?.access_token || '';
+        } catch {
+          return '';
+        }
+      }
+      function authHeaders() {
+        if (password) return { 'X-Referee-Password': password };
+        const tok = organiserToken();
+        return tok ? { Authorization: `bearer ${tok}` } : {};
+      }
+
+      async function api(method, path, body) {
+        const res = await fetch(`/api${path}`, {
+          method,
+          headers: { ...authHeaders(), ...(body ? { 'content-type': 'application/json' } : {}) },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (res.status === 401) {
+          throw new Error('unauthorised');
+        }
+        if (!res.ok) {
+          throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+        }
+        return res.json();
+      }
+
+      /* Points are held here and pushed up. If the network drops mid-match the
+   referee carries on scoring and it catches up — losing a match to a dead
+   wifi spot is the one failure that matters. */
+      function queue(item) {
+        const q = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        q.push(item);
+        localStorage.setItem(PENDING_KEY, JSON.stringify(q.slice(-40)));
+        renderStrip();
+      }
+      async function flush() {
+        let q = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        if (!q.length) return;
+        const left = [];
+        for (const item of q) {
+          try {
+            await api('PUT', item.path, item.body);
+          } catch {
+            left.push(item);
+          }
+        }
+        localStorage.setItem(PENDING_KEY, JSON.stringify(left));
+        renderStrip();
+      }
+      function pendingCount() {
+        return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]').length;
+      }
+
+      /* Every change is sent on its own, and they are chained so they arrive in the
+   order they happened.
+
+   These used to be debounced, which quietly broke undo: four quick taps
+   collapsed into one save, so only one state was ever recorded and undoing
+   jumped straight back past all four. A rally is a small request and there are
+   only tens of them in a match — correctness is worth more than the saving. */
+      let pushChain = Promise.resolve();
+      function push() {
+        if (!match) return;
+        const path = `/tournaments/${TOURNAMENT}/matches/${match.match_id}/scoring`;
+        const body = {
+          games,
+          current_score1: s1,
+          current_score2: s2,
+          serving_team: serving,
+          server_number: serverNum,
+          first_server_team: firstServer,
+          server_anchor_player_id: serverAnchorId,
+          receiver_anchor_player_id: receiverAnchorId,
+          current_server_player_id: currentServerId_,
+          status: matchOver ? 'FINISHED' : 'IN_PROGRESS',
+        };
+        undoSteps += 1;
+        pushChain = pushChain.then(async () => {
+          try {
+            await api('PUT', path, body);
+            await flush();
+          } catch {
+            queue({ path, body });
+          }
+        });
+      }
+
+      /* ─────────────── positions ───────────────
+   USAP 4.B.6.b: when a team's score is even, that team's starting server for
+   the game stands in the even court; when odd, the odd court. Their partner is
+   always in the other box. Everything below follows from that.
+*/
+      function playersOf(team) {
+        return team === 1 ? match.team1_players : match.team2_players;
+      }
+      function scoreOf(team) {
+        return team === 1 ? s1 : s2;
+      }
+      function noteOf(id) {
+        const p = [...(match?.team1_players || []), ...(match?.team2_players || [])].find(
+          (x) => x.id === id,
+        );
+        return p ? p.note || '' : '';
+      }
+      function nameOf(id) {
+        const p = [...(match.team1_players || []), ...(match.team2_players || [])].find(
+          (x) => x.id === id,
+        );
+        return p ? p.name : '';
+      }
+      function photoOf(id) {
+        const p = [...(match?.team1_players || []), ...(match?.team2_players || [])].find(
+          (x) => x.id === id,
+        );
+        return p ? p.photo || null : null;
+      }
+
+      /* The team that began the game serving owns the server anchor; the other team
+   owns the receiver anchor. */
+      function anchorOf(team) {
+        return team === firstServer ? serverAnchorId : receiverAnchorId;
+      }
+      function partnerOf(team, id) {
+        const ps = playersOf(team) || [];
+        const other = ps.find((p) => p.id !== id);
+        return other ? other.id : null;
+      }
+      /* Who stands in which box, from that team's own score. */
+      /* Singles: one player a side, both standing by the server's score (right on
+   even, left on odd), diagonally across from each other. No second server. */
+      function isSingles() {
+        return !!match?.singles;
+      }
+      function playerInBox(team, box) {
+        const anchor = anchorOf(team);
+        if (anchor == null) return null;
+        const by = isSingles() ? scoreOf(serving) : scoreOf(team);
+        const anchorBox = by % 2 === 0 ? 'even' : 'odd';
+        return box === anchorBox ? anchor : partnerOf(team, anchor);
+      }
+      function boxOfPlayer(team, id) {
+        return playerInBox(team, 'even') === id ? 'even' : 'odd';
+      }
+
+      /* Who has the ball is tracked, not worked out. The opening turn of a game
+   breaks any pattern you might infer it from: the starting team gets one
+   server, called the *second* server, who keeps serving and keeps changing
+   boxes for as long as they score. */
+      function currentServerId() {
+        return currentServerId_;
+      }
+      function currentReceiverId() {
+        const receivingTeam = serving === 1 ? 2 : 1;
+        // The receiver stands diagonally opposite — same box name, other end.
+        const serverBox = boxOfPlayer(serving, currentServerId());
+        return playerInBox(receivingTeam, serverBox);
+      }
+
+      /* ─────────────── the rules ───────────────
+   Side-out is lifted from the scoreboard app, generalised for win-by-2:
+
+     serving team wins the rally  → a point, same server
+     receiving team wins          → no point; 1st server becomes 2nd,
+                                    2nd server means side out
+*/
+      function gameWonBy(a, b) {
+        const hi = Math.max(a, b),
+          lo = Math.min(a, b);
+        if (hi < match.play_to || hi - lo < match.win_by) return null;
+        return a > b ? 1 : 2;
+      }
+      function gamesWon() {
+        return [games.filter(([a, b]) => a > b).length, games.filter(([a, b]) => b > a).length];
+      }
+      function neededToWin() {
+        return Math.floor(match.best_of / 2) + 1;
+      }
+
+      function wonRally(team) {
+        if (gameOver || matchOver) return;
+        sideOutFlash = false;
+        switchFlash = false;
+        const wasSwitched = endsSwitched();
+
+        if (match.scoring_type === 'RALLY') {
+          // Every rally scores, and the winner takes the serve.
+          if (team === 1) s1 += 1;
+          else s2 += 1;
+          serving = team;
+          currentServerId_ = playerInBox(team, scoreOf(team) % 2 === 0 ? 'even' : 'odd');
+        } else if (team === serving) {
+          if (serving === 1) s1 += 1;
+          else s2 += 1;
+          // Same server, and they swap boxes with their partner — so who is serving
+          // doesn't change, only where they stand.
+        } else if (serverNum === 1 && !isSingles()) {
+          // Server one lost: their partner takes over from the other box.
+          serverNum = 2;
+          currentServerId_ = partnerOf(serving, currentServerId_);
+        } else {
+          serving = serving === 1 ? 2 : 1;
+          serverNum = 1;
+          sideOutFlash = true;
+          // 4.B.6.c: service begins with whoever is correctly in the even court.
+          // In singles there's only the one, wherever their score puts them.
+          currentServerId_ = isSingles() ? anchorOf(serving) : playerInBox(serving, 'even');
+        }
+
+        if (gameWonBy(s1, s2) !== null) endGame();
+        switchFlash = !wasSwitched && endsSwitched();
+        if (switchFlash)
+          showEndsPopup(
+            `${match.team1} and ${match.team2} change sides at ${Math.max(s1, s2)}. The court on screen has turned to match.`,
+          );
+        render();
+        push();
+      }
+
+      function endGame() {
+        games.push([s1, s2]);
+        const [w1, w2] = gamesWon();
+        if (Math.max(w1, w2) >= neededToWin()) {
+          matchOver = true;
+          gameOver = true;
+          return;
+        }
+        // A new game needs its own starting servers, and the teams change ends — so
+        // the referee sets it up again rather than the app guessing.
+        s1 = 0;
+        s2 = 0;
+        gameOver = false;
+        // Teams change ends after every game.
+        flipped = !flipped;
+        localStorage.setItem('ref.flip', flipped ? '1' : '0');
+        showEndsPopup(
+          `Game ${games.length} done. ${match.team1} and ${match.team2} change sides for game ${games.length + 1}. The court on screen has turned to match.`,
+        );
+        setup = nextGameSetup();
+        // Saved blank, so leaving the match here comes back to this setup, not the last game's serve.
+        serverAnchorId = null;
+        receiverAnchorId = null;
+        currentServerId_ = null;
+      }
+
+      function nextGameSetup() {
+        const servingTeam = firstServer === 1 ? 2 : 1;
+        const sp = playersOf(servingTeam) || [];
+        const rp = playersOf(servingTeam === 1 ? 2 : 1) || [];
+        return {
+          servingTeam,
+          serverAnchorId: (sp[0] || {}).id ?? null,
+          receiverAnchorId: (rp[0] || {}).id ?? null,
+        };
+      }
+
+      /* Undo lives on the server, so it survives leaving the match and works for
+   whoever takes the court over next. */
+      async function undo() {
+        if (undoSteps <= 0) return;
+        try {
+          // Any point still queued has to land first, or it would come back after.
+          await flush();
+          const betweenGames = setup != null;
+          const d = (
+            await api('POST', `/tournaments/${TOURNAMENT}/matches/${match.match_id}/scoring/undo`)
+          ).data;
+          loadFrom(d, match);
+          // Back into the last game, so the teams are back at its ends.
+          if (betweenGames) {
+            flipped = !flipped;
+            localStorage.setItem('ref.flip', flipped ? '1' : '0');
+          }
+          undoSteps -= 1;
+          sideOutFlash = false;
+          switchFlash = false;
+          endsPopup = null;
+        } catch (e) {
+          error = e.message;
+        }
+        render();
+      }
+
+      /* ─────────────── coin ───────────────
+   A coin to flip at the net, nothing more: tap it, it lands heads or tails, tap
+   it again to flip again. The referee settles who serves with the players and
+   sets that up on the court.
+
+   Flipping also tells Bracket both teams are at the court, so the venue boards
+   stop calling the match. That's sent in the background: if it doesn't get
+   through, the coin still works and the call stops once scoring begins. */
+      let coin = null; // open: {result: 'HEADS' | 'TAILS' | null, flips}
+
+      function openCoin() {
+        coin = { result: null, flips: 0 };
+        render();
+      }
+      function closeCoin() {
+        coin = null;
+        render();
+      }
+
+      function flipCoin() {
+        const bit = crypto.getRandomValues(new Uint8Array(1))[0] & 1;
+        coin.result = bit ? 'HEADS' : 'TAILS';
+        coin.flips += 1;
+        render();
+        if (match) {
+          api('PUT', `/tournaments/${TOURNAMENT}/referee/matches/${match.match_id}/coin_flip`, {
+            result: coin.result,
+          }).catch(() => {});
+        }
+      }
+
+      function renderCoin(app) {
+        const face = coin.result === 'HEADS' ? 'H' : coin.result === 'TAILS' ? 'T' : '?';
+        const said =
+          coin.result == null
+            ? 'Tap the coin to flip'
+            : coin.result === 'HEADS'
+              ? 'Heads'
+              : 'Tails';
+        app.innerHTML = `
+    ${matchHead('')}
+    <div class="glass coincard">
+      <button class="flipcoin" onclick="flipCoin()" aria-label="Flip the coin">
+        <!-- a new element each flip, so the spin plays every time -->
+        <span class="coin big ${coin.result ? 'spin' : ''}" data-flip="${coin.flips}">${face}</span>
+      </button>
+      <div class="coinresult" aria-live="polite">${said}</div>
+      <div class="muted">${
+        coin.flips > 1
+          ? `Flip ${coin.flips} · tap to flip again`
+          : coin.flips === 1
+            ? 'Tap to flip again'
+            : '&nbsp;'
+      }</div>
+    </div>
+    <div class="actions"><button class="primary" onclick="closeCoin()">Done</button></div>`;
+      }
+
+      /* The coin is for before the match; once a rally is played it goes away.
+   0–0 in the first game with the serve not yet moved means no rally yet —
+   fixing who stands where doesn't count. */
+      function beforeFirstRally() {
+        const serveUnmoved =
+          serving === firstServer &&
+          (match.scoring_type !== 'SIDEOUT' || isSingles() || serverNum === 2);
+        return !matchOver && games.length === 0 && s1 === 0 && s2 === 0 && serveUnmoved;
+      }
+      const COIN_BUTTON =
+        '<button class="tossbtn" onclick="openCoin()"><span class="coin">H</span>Flip a coin</button>';
+
+      /* ─────────────── fixing positions mid-game ───────────────
+   The referee set a team up the wrong way round and only noticed later. Swap
+   who is where without touching the score: the same boxes, the other names.
+   If that team has the ball, the server moves with their box, because the
+   person serving is whoever is standing there. Saved like any change, so Undo
+   takes it back. */
+      let fixing = false;
+
+      function swapPlayers(team) {
+        const anchor = anchorOf(team);
+        const partner = anchor == null ? null : partnerOf(team, anchor);
+        if (partner == null) return;
+        if (team === firstServer) serverAnchorId = partner;
+        else receiverAnchorId = partner;
+        if (team === serving && currentServerId_ != null)
+          currentServerId_ = partnerOf(team, currentServerId_);
+        sideOutFlash = false;
+        switchFlash = false;
+        render();
+        push();
+      }
+
+      /* ─────────────── screens ─────────────── */
+      function renderStrip() {
+        const n = pendingCount();
+        document.getElementById('strip').innerHTML = n
+          ? `<div class="strip">${n} update${n > 1 ? 's' : ''} waiting to send — keep this page open</div>`
+          : '';
+      }
+
+      /* Paint the drawings in this court's own colours; anything unset or not a
+   plain #RRGGBB keeps the default from the stylesheet. */
+      const PAINT = {
+        service_color: '--service',
+        kitchen_color: '--kitchen',
+        surround_color: '--surround',
+      };
+      function applyPaint() {
+        const colors = court?.colors || {};
+        for (const [field, cssVar] of Object.entries(PAINT)) {
+          const value = colors[field];
+          if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
+            document.documentElement.style.setProperty(cssVar, value);
+          } else {
+            document.documentElement.style.removeProperty(cssVar);
+          }
+        }
+      }
+
+      function render() {
+        renderPage();
+        fitCourt();
+        renderEndsPopup();
+      }
+
+      /* Teams changing ends is easy to miss with eyes on the ball, so it gets a
+   pop-up the referee has to tap away, drawn outside the page so a re-render
+   doesn't clear it. */
+      let endsPopup = null; // the line under "Switch ends", while it's up
+      function showEndsPopup(text) {
+        endsPopup = text;
+        try {
+          navigator.vibrate?.([200, 100, 200]);
+        } catch {}
+      }
+      function closeEndsPopup() {
+        endsPopup = null;
+        render();
+      }
+      function renderEndsPopup() {
+        let el = document.getElementById('endsPopup');
+        if (endsPopup == null) {
+          el?.remove();
+          return;
+        }
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'endsPopup';
+          el.className = 'endspop';
+          document.body.appendChild(el);
+        }
+        el.innerHTML = `<div class="endscard" role="alertdialog" aria-labelledby="endsT" aria-describedby="endsD">
+      <div class="endsicon" aria-hidden="true">⇅</div>
+      <div class="endst" id="endsT">Switch ends</div>
+      <p class="endsd" id="endsD">${esc(endsPopup)}</p>
+      <button class="primary" onclick="closeEndsPopup()" autofocus>OK</button>
+    </div>`;
+      }
+      /* The other end for each team: the drawing turns half a turn. */
+      function switchEnds() {
+        flipped = !flipped;
+        localStorage.setItem('ref.flip', flipped ? '1' : '0');
+        render();
+      }
+
+      /* On a phone held upright, stretch the court from where it starts down to just
+   above the buttons under it (Undo, Rotate court), so the halves fill the screen. */
+      const UPRIGHT_PHONE = window.matchMedia('(orientation: portrait) and (max-width: 700px)');
+      function fitCourt() {
+        const surface = document.querySelector('.court.as-stack .surface');
+        if (!surface) return;
+        if (!UPRIGHT_PHONE.matches) {
+          surface.style.height = '';
+          return;
+        }
+        const court = surface.closest('.court');
+        const below = court.nextElementSibling?.classList.contains('actions')
+          ? court.nextElementSibling.offsetHeight + 12
+          : 0;
+        const top = surface.getBoundingClientRect().top + window.scrollY;
+        const pad = court.getBoundingClientRect().bottom - surface.getBoundingClientRect().bottom;
+        surface.style.height = `${Math.max(320, window.innerHeight - top - pad - below - 10)}px`;
+      }
+      window.addEventListener('resize', fitCourt);
+
+      function renderPage() {
+        renderStrip();
+        applyPaint();
+        const app = document.getElementById('app');
+
+        if (!TOURNAMENT || (!COURT && !OPEN_MATCH)) {
+          app.innerHTML = `<p class="muted">This link is missing its court. Scan the code on the net post.</p>`;
+          return;
+        }
+        if (!password && !organiserToken()) return renderGate(app);
+        if (match && coin) return renderCoin(app);
+        if (match && setup) return renderSetup(app);
+        if (match) return renderScoring(app);
+        return renderCourt(app);
+      }
+
+      function renderGate(app) {
+        app.innerHTML = `
+    <div class="gate glass">
+      <div class="kicker">Referee</div>
+      <h1>${esc(courtLabel(COURT))}</h1>
+      <p class="muted">Enter the password for this event. You'll only be asked once on this phone.</p>
+      <input id="pw" type="password" inputmode="text" autocomplete="off" placeholder="Password">
+      <button class="primary" onclick="submitPassword()">Continue</button>
+      <div class="err">${esc(error)}</div>
+      <a class="practice" href="./">New to this? Practice first on made-up matches</a>
+    </div>`;
+        document.getElementById('pw').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') submitPassword();
+        });
+        document.getElementById('pw').focus();
+      }
+
+      async function submitPassword() {
+        password = document.getElementById('pw').value.trim();
+        error = '';
+        try {
+          await loadCourt();
+          localStorage.setItem(PW_KEY, password);
+        } catch (e) {
+          password = '';
+          error = e.message === 'unauthorised' ? 'That password is not right.' : e.message;
+        }
+        render();
+      }
+
+      async function loadCourt() {
+        if (!COURT) {
+          court = { court_name: '', matches: [] };
+          return;
+        }
+        court = await api('GET', `/tournaments/${TOURNAMENT}/referee/courts/${COURT}/matches`);
+      }
+
+      /* Opened straight from the results page: fetch that one match and go into it,
+   with no list to come from. */
+      async function openDirectMatch(id) {
+        const res = await api('GET', `/tournaments/${TOURNAMENT}/referee/matches/${id}`);
+        court = { court_name: res.court_name, colors: res.colors, matches: [res.match] };
+        await openMatch(res.match.match_id);
+      }
+
+      /* Initials on a colour picked from the name, so a team looks the same on every
+   phone and on the organizer's schedule. */
+      const BADGE_COLORS = [
+        '#2F5FC4',
+        '#0E8A7A',
+        '#C2410C',
+        '#7C3AED',
+        '#B45309',
+        '#BE185D',
+        '#0369A1',
+      ];
+      function badge(name, size = 24) {
+        const initials = String(name ?? '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0].toUpperCase())
+          .join('');
+        let hash = 0;
+        for (const ch of String(name ?? '')) hash = (hash * 31 + ch.charCodeAt(0)) % 9973;
+        return (
+          `<span class="tb" aria-hidden="true" style="width:${size}px;height:${size}px;` +
+          `font-size:${Math.round(size * 0.42)}px;background:${BADGE_COLORS[hash % BADGE_COLORS.length]}">${esc(initials)}</span>`
+        );
+      }
+
+      function photoUrl(photo) {
+        // A path is one of overlay-preview.html's samples, not a player's uploaded file.
+        return photo.startsWith('/')
+          ? photo
+          : `/api/static/player-photos/${encodeURIComponent(photo)}`;
+      }
+      /* A round face: the player's photo over their initials, which show through if
+   there's no photo or it fails to load. */
+      function face(name, photo) {
+        const img = photo
+          ? `<img src="${esc(photoUrl(photo))}" alt="" loading="lazy" ${
+              /\.jpe?g$/i.test(photo) ? 'class="flat"' : ''
+            } onload="this.parentNode.classList.add('has')" onerror="this.remove()">`
+          : '';
+        return `<span class="face">${badge(name)}${img}</span>`;
+      }
+      function faces(players, team) {
+        const list = (players || []).slice(0, 2);
+        if (!list.length) return `<span class="faces">${face(team)}</span>`;
+        return `<span class="faces">${list.map((p) => face(p.name, p.photo)).join('')}</span>`;
+      }
+
+      function statusPill() {
+        const n = pendingCount();
+        if (n) return `<span class="status off">${n} waiting</span>`;
+        return navigator.onLine
+          ? '<span class="status">Online</span>'
+          : '<span class="status off">Offline</span>';
+      }
+
+      /* Two layouts to try at the net: this one, and the classic one. The choice is
+   kept on this phone, and ref.html (the QR codes, the results page) opens
+   whichever was picked last. Scores waiting to send are shared, so nothing is
+   lost switching mid-day. */
+      function switchLayout() {
+        try {
+          localStorage.setItem('ref.ui', 'classic');
+        } catch (e) {}
+        // Reopen the match on screen in the other layout. A game under way carries
+        // on from the server's score; one still being set up starts its setup again.
+        const next = new URLSearchParams(location.search);
+        next.delete('resume');
+        if (match && !OPEN_MATCH) next.set('resume', match.match_id);
+        flush()
+          .catch(() => {})
+          .finally(() => {
+            location.href = 'ref-classic.html?' + next;
+          });
+      }
+
+      function renderCourt(app) {
+        const head = `
+    <div class="dayhead">
+      <div><div class="kicker">Referee</div><h1>${esc(courtLabel(court?.court_name || COURT))}</h1></div>
+      ${statusPill()}
+    </div>`;
+        if (!court) {
+          app.innerHTML = head + '<p class="muted">Loading…</p>';
+          return;
+        }
+
+        const live = court.matches.filter((m) => m.status === 'IN_PROGRESS');
+        const upcoming = court.matches.filter((m) => m.status === 'NOT_STARTED');
+        const done = court.matches.filter((m) => m.status === 'FINISHED');
+        const at = (m) => (m.start_time ? hhmm(m.start_time) : '—');
+        const format = (m) => (m.best_of > 1 ? ` · best of ${m.best_of}` : '');
+
+        const meta = (m) => esc(m.pool || '') + format(m);
+        // Each game's points for one team, the ones it lost greyed out.
+        const games = (m, team) =>
+          m.games
+            .map((g) => {
+              const mine = g[team - 1];
+              const won = mine > g[2 - team];
+              return `<span class="${won ? '' : 'lost'}">${mine}</span>`;
+            })
+            .join('');
+        const teamRow = (m, team, score) => `
+      <span class="trow">
+        ${faces(team === 1 ? m.team1_players : m.team2_players, team === 1 ? m.team1 : m.team2)}
+        <span class="tn">${esc(team === 1 ? m.team1 : m.team2)}</span>
+        ${score ? `<span class="sc">${score}</span>` : ''}
+      </span>`;
+
+        const liveCard = (m) => `
+    <button class="glass mcard live" onclick="openMatch(${m.match_id})">
+      <span class="mtop"><span class="livetag">Live</span><span class="meta">${meta(m)}</span></span>
+      ${teamRow(m, 1, `${games(m, 1)}<span>${m.current_score1}</span>`)}
+      ${teamRow(m, 2, `${games(m, 2)}<span>${m.current_score2}</span>`)}
+      <span class="navybar">Resume scoring</span>
+    </button>`;
+        // A match with a side still TBD can't be opened until both teams are known.
+        const nextRow = (m) => `
+    <button class="glass mcard ${m.ready === false ? 'tbd' : ''}" onclick="openMatch(${m.match_id})"
+      ${m.ready === false ? 'disabled' : ''}>
+      <span class="mtop"><span class="when">${at(m)}</span><span class="meta">${
+        m.ready === false ? '<span class="wait">Waiting for teams</span>' : meta(m)
+      }</span></span>
+      ${teamRow(m, 1)}
+      ${teamRow(m, 2)}
+    </button>`;
+        const doneRow = (m) => {
+          const score = (team) =>
+            m.games.length
+              ? games(m, team)
+              : `<span>${team === 1 ? m.current_score1 : m.current_score2}</span>`;
+          return `
+    <button class="mcard done" onclick="openMatch(${m.match_id})">
+      <span class="mtop"><span>${at(m)}</span><span class="meta">${meta(m)}</span></span>
+      ${teamRow(m, 1, score(1))}
+      ${teamRow(m, 2, score(2))}
+    </button>`;
+        };
+
+        app.innerHTML =
+          head +
+          (live.length ? `<h3 class="sec">On now</h3>${live.map(liveCard).join('')}` : '') +
+          (upcoming.length ? `<h3 class="sec">Up next</h3>${upcoming.map(nextRow).join('')}` : '') +
+          (done.length
+            ? `<h3 class="sec">Finished · tap to fix a score</h3>${done.map(doneRow).join('')}`
+            : '') +
+          (court.matches.length ? '' : '<p class="muted">Nothing scheduled on this court.</p>') +
+          (error ? `<div class="err">${esc(error)}</div>` : '') +
+          `<p style="text-align:center;margin-top:28px">
+      <button class="iconbtn" style="width:auto;padding:0 16px;font:inherit;font-size:14px" onclick="switchLayout()">
+        Switch to the classic layout (bigger buttons)</button></p>`;
+      }
+
+      function scoreLabel(m) {
+        if (m.games.length) return m.games.map((g) => g.join('–')).join('  ');
+        return `${m.current_score1}–${m.current_score2}`;
+      }
+
+      async function openMatch(id) {
+        const m = court.matches.find((x) => x.match_id === id);
+        if (!m) return;
+        if (m.ready === false && m.status === 'NOT_STARTED') {
+          // A side is still TBD: there's nobody to score until the teams are known.
+          error = 'Both teams aren’t known yet, so this match can’t start.';
+          render();
+          return;
+        }
+        error = '';
+        match = m;
+        setup = null;
+        typing = false;
+        fixing = false;
+        coin = null;
+        undoSteps = m.undo_steps || 0;
+
+        try {
+          // Already under way? Pick it up where it was left.
+          const d = (await api('GET', `/tournaments/${TOURNAMENT}/matches/${id}/scoring`)).data;
+          loadFrom(d, m);
+        } catch (e) {
+          if (e.message !== 'unauthorised') {
+            // Not started: it's set up at the net first. Nobody at a desk can know
+            // who is serving or receiving, so this can't be filled in ahead of time.
+            beginSetup(m);
+          } else {
+            error = e.message;
+          }
+        }
+        render();
+      }
+
+      function loadFrom(d, m) {
+        games = d.games || [];
+        s1 = d.current_score1;
+        s2 = d.current_score2;
+        serving = d.serving_team;
+        serverNum = d.server_number;
+        firstServer = d.first_server_team;
+        serverAnchorId = d.server_anchor_player_id;
+        receiverAnchorId = d.receiver_anchor_player_id;
+        currentServerId_ = d.current_server_player_id;
+        matchOver = d.status === 'FINISHED';
+        gameOver = matchOver;
+        setup = null;
+        undoSteps = Math.max(0, undoSteps);
+        // The format copied when the game started beats the pool's current rules.
+        match = {
+          ...m,
+          scoring_type: d.scoring_type,
+          play_to: d.play_to,
+          win_by: d.win_by,
+          best_of: d.best_of,
+        };
+        // Between games: the next game's serve hasn't been set up yet.
+        if (games.length && !matchOver && !s1 && !s2 && serverAnchorId == null)
+          setup = nextGameSetup();
+      }
+
+      function defaultSetup(m) {
+        return {
+          servingTeam: 1,
+          serverAnchorId: (m.team1_players[0] || {}).id ?? null,
+          receiverAnchorId: (m.team2_players[0] || {}).id ?? null,
+        };
+      }
+
+      /* Tapping a name swaps to their partner. */
+      function cycleSetup(which) {
+        const team = which === 'server' ? setup.servingTeam : setup.servingTeam === 1 ? 2 : 1;
+        const ps = playersOf(team) || [];
+        if (ps.length < 2) return;
+        const key = which === 'server' ? 'serverAnchorId' : 'receiverAnchorId';
+        const idx = ps.findIndex((p) => p.id === setup[key]);
+        setup[key] = ps[(idx + 1) % ps.length].id;
+        render();
+      }
+
+      /* Move the serving flag to the other team.
+
+   The same two people stay chosen — they just swap roles, so whoever was down
+   to serve is now down to receive. Resetting the names here would throw away a
+   choice the referee had already made. */
+      function swapServingTeam() {
+        setup.servingTeam = setup.servingTeam === 1 ? 2 : 1;
+        [setup.serverAnchorId, setup.receiverAnchorId] = [
+          setup.receiverAnchorId,
+          setup.serverAnchorId,
+        ];
+        render();
+      }
+
+      async function startGame() {
+        // A later game. The server keeps what it has when a match that's under way is
+        // started again, so this game's serve goes up like any other change.
+        if (games.length) {
+          serving = setup.servingTeam;
+          firstServer = setup.servingTeam;
+          serverNum = match.scoring_type === 'SIDEOUT' && !isSingles() ? 2 : 1;
+          serverAnchorId = setup.serverAnchorId;
+          receiverAnchorId = setup.receiverAnchorId;
+          currentServerId_ = setup.serverAnchorId;
+          setup = null;
+          render();
+          push();
+          return;
+        }
+        try {
+          const d = (
+            await api(
+              'POST',
+              `/tournaments/${TOURNAMENT}/matches/${match.match_id}/scoring/start`,
+              {
+                first_server_team: setup.servingTeam,
+                server_anchor_player_id: setup.serverAnchorId,
+                receiver_anchor_player_id: setup.receiverAnchorId,
+              },
+            )
+          ).data;
+          loadFrom(d, match);
+          undoSteps = 0; // a game starting is as far back as it goes
+        } catch (e) {
+          error = e.message;
+        }
+        render();
+      }
+
+      /* Who's who. Referees don't know 200 names but they can see a blue cap, and it
+   changes when somebody swaps a sweaty shirt — so these are editable, not
+   written once. It lives up here because on the scoring screen a player's name
+   is the button for winning a rally. */
+      function whoSheet() {
+        const rows = [
+          [match.team1, match.team1_players || []],
+          [match.team2, match.team2_players || []],
+        ]
+          .map(
+            ([team, ps]) => `
+    <div class="whoteam">${esc(team)}</div>
+    ${
+      ps
+        .map(
+          (p) => `
+      <div class="whorow">
+        <span class="whoname">${esc(p.name)}</span>
+        <input id="note_${p.id}" placeholder="blue cap, left-handed…"
+               value="${esc(p.note || '')}"
+               onchange="saveNote(${p.id}, this.value)">
+      </div>`,
+        )
+        .join('') || '<div class="muted">No players entered for this team.</div>'
+    }
+  `,
+          )
+          .join('');
+
+        return `<div class="who-sheet glass">
+    <div class="whohead">
+      <strong>Who's who</strong>
+      <button class="ghost" onclick="whoOpen=false; render()">Close</button>
+    </div>
+    ${rows}
+    <p class="muted" style="margin:8px 0 0">Saved as you type. Clear it to remove.</p>
+  </div>`;
+      }
+
+      async function saveNote(playerId, value) {
+        try {
+          await api('PUT', `/tournaments/${TOURNAMENT}/referee/players/${playerId}/note`, {
+            note: value,
+          });
+          for (const list of [match.team1_players || [], match.team2_players || []]) {
+            const p = list.find((x) => x.id === playerId);
+            if (p) p.note = value.trim() || null;
+          }
+        } catch (e) {
+          error = e.message;
+          render();
+        }
+      }
+
+      /* Back, court, format, and (while scoring) the call: server's score, receiver's
+   score, and in side-out which server is up. */
+      function matchHead(call) {
+        const sideOut = match.scoring_type === 'SIDEOUT';
+        const [w1, w2] = gamesWon();
+        const format =
+          (isSingles() ? 'singles · ' : '') +
+          `${sideOut ? 'side-out' : 'rally'} to ${match.play_to}` +
+          (match.win_by > 1 ? `, win by ${match.win_by}` : '') +
+          (match.best_of > 1 ? ` · best of ${match.best_of} (${w1}–${w2})` : '');
+        return `
+    <div class="mhead">
+      <button class="iconbtn" aria-label="Back to court list" onclick="backToCourt()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="mtitle">
+        <div class="h">${esc(courtLabel(court.court_name || COURT))}</div>
+        <div class="sub">${esc(match.pool)} · ${format}</div>
+      </div>
+      ${call ? `<div class="call">${call}</div>` : ''}
+      <button class="iconbtn" style="width:auto;padding:0 12px;font:inherit;font-size:13px;flex:none"
+        aria-label="Switch to the classic layout" onclick="switchLayout()">Classic</button>
+    </div>`;
+      }
+
+      const ICON_UNDO =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>';
+      const ICON_ROTATE =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 12a8 8 0 01-14 5.3M4 12a8 8 0 0114-5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>';
+      const ICON_NOTES =
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 4v16M13 9h4M13 13h4"/></svg>';
+
+      function personHtml(p) {
+        if (!p) return '<span class="who"></span>';
+        return `<span class="who">
+      ${
+        // With a photo, the serve ball sits on its corner rather than taking a line.
+        p.photo
+          ? `<span class="facewrap">${face(p.name, p.photo)}${p.ball ? '<span class="ball" aria-hidden="true"></span>' : ''}</span>`
+          : p.ball
+            ? '<span class="ball" aria-hidden="true"></span>'
+            : ''
+      }
+      <span class="pn">${esc(p.name || '—')}</span>
+      ${p.tag ? `<span class="tag">${esc(p.tag)}</span>` : ''}
+      ${p.note ? `<span class="pnote">${esc(p.note)}</span>` : ''}
+    </span>`;
+      }
+
+      /* The court as the referee sees it. Each half is one team's side and the button
+   for that team; halfFor(team, boxes) fills it, with `boxes` the even/odd boxes
+   in screen order so each player is drawn where they should be standing. */
+      function courtView(halfFor) {
+        const half = (team) => {
+          const first = (team === 1) !== flippedNow();
+          const h = halfFor(team, boxOrder(team));
+          const svc = `<span class="svc">${h.people.map(personHtml).join('')}</span>`;
+          const kz = `<span class="kz"><span class="pill">${h.pill}</span></span>`;
+          // The kitchen is always the side of the half that touches the net.
+          return `<button class="half ${first ? 'first' : 'second'}" onclick="${h.action}" ${h.disabled ? 'disabled' : ''}>
+        ${first ? svc + kz : kz + svc}
+      </button>`;
+        };
+        const [a, b] = flippedNow() ? [2, 1] : [1, 2];
+        return `<div class="court as-${layout}"><div class="surface">
+      ${half(a)}<span class="net" aria-hidden="true"></span>${half(b)}
+    </div></div>`;
+      }
+
+      const teamName = (t) => (t === 1 ? match.team1 : match.team2);
+
+      function renderSetup(app) {
+        const need = isSingles() ? 1 : 2;
+        const missing = (playersOf(1) || []).length < need || (playersOf(2) || []).length < need;
+
+        /* A game starts at 0–0, so each team's chosen player stands in the even box
+     and their partner in the odd one — drawn here before anyone presses Start. */
+        const court_ = courtView((team, boxes) => {
+          const serves = team === setup.servingTeam;
+          const anchor = serves ? setup.serverAnchorId : setup.receiverAnchorId;
+          const partner = anchor == null ? null : partnerOf(team, anchor);
+          /* "Right" and "left" as the players see it, facing the net: the right box
+       is the even court, where the first server and first receiver stand. */
+          return {
+            action: `cycleSetup('${serves ? 'server' : 'receiver'}')`,
+            people: boxes.map((box) =>
+              box === 'even'
+                ? {
+                    name: nameOf(anchor) || teamName(team),
+                    photo: photoOf(anchor),
+                    ball: serves,
+                    tag: `right · ${serves ? 'serves first' : 'receives first'}`,
+                  }
+                : partner != null
+                  ? { name: nameOf(partner), photo: photoOf(partner), tag: 'left' }
+                  : null,
+            ),
+            pill: `${badge(teamName(team), 28)}<span class="pl">${esc(teamName(team))} · tap to swap left/right</span>`,
+          };
+        });
+
+        app.innerHTML = `
+    ${matchHead('')}
+    ${games.length || match.toss ? '' : COIN_BUTTON}
+    <p class="muted" style="margin:0 0 12px">
+      Whoever is on the right serves or receives first. Tap a team's side to swap its
+      two players between left and right; Other team serves moves the ball across;
+      Switch ends puts each team at the other end.
+    </p>
+    ${
+      missing
+        ? `<div class="warnbox">These teams don't have both players entered, so positions
+      can't be checked. Scoring still works.</div>`
+        : ''
+    }
+    ${whoOpen ? whoSheet() : ''}
+    ${court_}
+    <div class="actions">
+      <button onclick="swapServingTeam()">Other team serves</button>
+      <button onclick="switchEnds()">Switch ends</button>
+    </div>
+    ${entranceToggle()}
+    <div class="actions">
+      <button onclick="rotateCourt()">${ICON_ROTATE}Rotate court</button>
+      <button class="iconbtn" aria-label="Player notes" onclick="whoOpen=!whoOpen; render()">${ICON_NOTES}</button>
+    </div>
+    <p class="hint">Rotate until the drawing matches the court from where you stand, then
+      Switch ends until each team is drawn at the end it's really at.</p>
+    <div class="actions">
+      ${games.length && undoSteps > 0 ? `<button onclick="undo()">${ICON_UNDO}Undo</button>` : ''}
+      ${games.length || match.toss ? '' : `<button onclick="openToss()">Players set up</button>`}
+      <button class="primary" onclick="startGame()">Start</button>
+    </div>
+    <div class="err">${esc(error)}</div>`;
+      }
+
+      function renderScoring(app) {
+        const [w1, w2] = gamesWon();
+        const twoServers = match.scoring_type === 'SIDEOUT' && !isSingles();
+        const serverId = currentServerId();
+        const receiverId = currentReceiverId();
+        const knowPositions = serverId != null && receiverId != null;
+        const receivingTeam = serving === 1 ? 2 : 1;
+
+        const call = matchOver
+          ? `${s1}-${s2}`
+          : `${scoreOf(serving)}-${scoreOf(receivingTeam)}` +
+            (twoServers ? `-<span>${serverNum}</span>` : '');
+
+        const roleOf = (id) => {
+          if (matchOver) return {};
+          if (id === serverId) {
+            return {
+              ball: true,
+              tag: twoServers ? (serverNum === 1 ? '1st server' : '2nd server') : 'serves',
+            };
+          }
+          if (id === receiverId) return { tag: 'receives' };
+          return {};
+        };
+
+        /* A half is a team on its side of the net, and teams don't move when the serve
+     changes — only the ball and the labels do, so nothing jumps under the
+     referee's thumb. */
+        const court_ = courtView((team, boxes) => ({
+          action: fixing ? `swapPlayers(${team})` : `wonRally(${team})`,
+          disabled: matchOver && !fixing,
+          people: knowPositions
+            ? boxes.map((box) => {
+                const id = playerInBox(team, box);
+                return id == null
+                  ? null
+                  : { name: nameOf(id), photo: photoOf(id), note: noteOf(id), ...roleOf(id) };
+              })
+            : [
+                {
+                  name: teamName(team),
+                  ball: !matchOver && team === serving,
+                  tag: team === serving ? 'serving' : 'receiving',
+                },
+              ],
+          pill:
+            `<span class="tile">${scoreOf(team)}</span>` +
+            `<span class="pl">${
+              fixing
+                ? `Tap → swap ${esc(teamName(team))} left/right`
+                : matchOver
+                  ? esc(teamName(team))
+                  : `Tap → ${esc(teamName(team))} won rally`
+            }</span>`,
+        }));
+
+        app.innerHTML = `
+    ${matchHead(call)}
+    ${beforeFirstRally() && !match.toss ? COIN_BUTTON : ''}
+    ${whoOpen ? whoSheet() : ''}
+    ${matchOver ? `<div class="banner">${esc(w1 > w2 ? match.team1 : match.team2)} wins</div>` : ''}
+    ${switchFlash ? `<div class="so switch">SWITCH ENDS · ${esc(match.team1)} and ${esc(match.team2)} change sides</div>` : ''}
+    ${sideOutFlash ? '<div class="so">SIDE OUT</div>' : ''}
+    ${games.length || endsSwitched() ? `<div class="games">${games.map((g, i) => `<span class="game">G${i + 1} ${g[0]}–${g[1]}</span>`).join('')}${endsSwitched() && !matchOver ? '<span class="game">Ends switched</span>' : ''}</div>` : ''}
+    ${
+      fixing
+        ? `<div class="fixbar">
+        <span><b>Fixing player sides.</b> Tap a team's side to swap its two players between
+          left and right. The score won't change.</span>
+        <button class="primary" onclick="fixing=false; render()">Done</button>
+      </div>`
+        : ''
+    }
+
+    ${court_}
+
+    <div class="actions">
+      <button onclick="undo()" ${undoSteps > 0 ? '' : 'disabled'}>${ICON_UNDO}Undo</button>
+      ${
+        matchOver
+          ? `<button class="primary" onclick="openSignatures()">Sign to complete</button>`
+          : `<button class="primary" onclick="rotateCourt()">${ICON_ROTATE}Rotate court</button>`
+      }
+      <button class="iconbtn" aria-label="Player notes" onclick="whoOpen=!whoOpen; render()">${ICON_NOTES}</button>
+    </div>
+    ${matchOver ? '' : entranceToggle()}
+
+    <div class="typein">
+      ${
+        knowPositions && !matchOver
+          ? `<button class="ghost" onclick="fixing=!fixing; render()">${fixing ? 'Stop fixing sides' : 'Fix player sides'}</button>`
+          : ''
+      }
+      <button class="ghost" onclick="toggleTypeIn()">${typing ? 'Hide' : 'Type the final score instead'}</button>
+      ${
+        typing
+          ? `
+        <p class="muted" style="margin:4px 0 10px">
+          For a walkover, a match scored on paper, or fixing a number at the desk.
+          ${match.best_of > 1 ? `Fill in as many games as were played.` : ''}
+        </p>
+        ${Array.from(
+          { length: match.best_of },
+          (_, i) => `
+          <div class="typerow">
+            <span class="muted">${match.best_of > 1 ? `Game ${i + 1}` : 'Score'}</span>
+            <input type="number" min="0" inputmode="numeric" id="t1_${i}" value="${games[i] ? games[i][0] : ''}">
+            <input type="number" min="0" inputmode="numeric" id="t2_${i}" value="${games[i] ? games[i][1] : ''}">
+          </div>`,
+        ).join('')}
+        <div class="actions" style="margin-top:10px">
+          <button class="primary" onclick="saveTypedScore()">Save result</button>
+        </div>`
+          : ''
+      }
+    </div>
+    <div class="err">${esc(error)}</div>`;
+      }
+
+      function toggleTypeIn() {
+        typing = !typing;
+        render();
+      }
+
+      /* Straight to a result, skipping the rallies. */
+      async function saveTypedScore() {
+        const typed = [];
+        for (let i = 0; i < match.best_of; i++) {
+          const a = document.getElementById(`t1_${i}`).value;
+          const b = document.getElementById(`t2_${i}`).value;
+          if (a === '' && b === '') continue;
+          const [na, nb] = [parseInt(a || '0', 10), parseInt(b || '0', 10)];
+          if (na === nb) {
+            error = `Game ${i + 1} can't be a draw.`;
+            return render();
+          }
+          typed.push([na, nb]);
+        }
+        if (!typed.length) {
+          error = 'Put a score in first.';
+          return render();
+        }
+
+        const [w1, w2] = [
+          typed.filter((g) => g[0] > g[1]).length,
+          typed.filter((g) => g[1] > g[0]).length,
+        ];
+        if (Math.max(w1, w2) < Math.floor(match.best_of / 2) + 1) {
+          error = `Best of ${match.best_of} — someone has to win ${Math.floor(match.best_of / 2) + 1}.`;
+          return render();
+        }
+
+        games = typed;
+        [s1, s2] = typed[typed.length - 1];
+        matchOver = true;
+        gameOver = true;
+        typing = false;
+        error = '';
+        render();
+        push();
+      }
+
+      async function backToCourt() {
+        if (OPEN_MATCH) {
+          // Opened from the results page. A browser won't let this tab close itself, so
+          // carry on to the court's matches, or the results for a match with no court.
+          const rest = new URLSearchParams(location.search);
+          rest.delete('match');
+          const next = COURT
+            ? `${location.pathname}?${rest}`
+            : `/tournaments/${TOURNAMENT}/results`;
+          flush()
+            .catch(() => {})
+            .finally(() => {
+              location.replace(next);
+            });
+          return;
+        }
+        match = null;
+        try {
+          await loadCourt();
+        } catch (e) {
+          error = e.message;
+        }
+        render();
+      }
+
+      /* ─────────────── wiring ─────────────── */
+      function esc(s) {
+        return String(s ?? '').replace(
+          /[&<>"]/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c],
+        );
+      }
+
+      // Times come from the server in UTC; show them in the phone's own time.
+      function hhmm(iso) {
+        const d = new Date(iso);
+        return (
+          String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+        );
+      }
+
+      // Courts may be named "3" or "Court 3"; don't print "Court Court 3".
+      function courtLabel(name) {
+        const n = String(name ?? '');
+        return /^court\b/i.test(n) ? n : `Court ${n}`;
+      }
+
+      // Keep the court list fresh while it's on screen; leave a match being scored
+      // alone so a refresh can't stamp on the referee's own taps.
+      setInterval(async () => {
+        await flush();
+        if (!match && !OPEN_MATCH && (password || organiserToken()) && TOURNAMENT && COURT) {
+          try {
+            await loadCourt();
+            render();
+          } catch {}
+        }
+      }, 4000);
+
+      (async () => {
+        // Once only: a reload after this shouldn't jump back into the match.
+        if (RESUME) {
+          const rest = new URLSearchParams(location.search);
+          rest.delete('resume');
+          history.replaceState(null, '', location.pathname + '?' + rest);
+        }
+        if ((password || organiserToken()) && TOURNAMENT) {
+          try {
+            if (OPEN_MATCH) await openDirectMatch(OPEN_MATCH);
+            else {
+              await loadCourt();
+              if (RESUME) await openMatch(Number(RESUME));
+            }
+          } catch (e) {
+            if (e.message === 'unauthorised') {
+              password = '';
+              localStorage.removeItem(PW_KEY);
+            } else error = e.message;
+          }
+        }
+        render();
+      })();
+    </script>
+  </body>
+</html>

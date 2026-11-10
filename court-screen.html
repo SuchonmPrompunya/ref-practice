@@ -1,0 +1,2579 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Court screen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* The touch monitor at a court. It follows the referee through the same stages as the OBS
+         overlay, and anyone can tap around the tournament's details: it goes back by itself when
+         nobody has touched it for a while. Read-only: nothing here changes anything.
+         1rem is 1% of a 16:9 screen's width, so it holds together at any size. */
+      :root {
+        --ink: #0a1024;
+        --panel: #141d3c;
+        --ivory: #f5efe0;
+        --dim: #a2acc4;
+        --gold: #d4b26a;
+        --gold-fill: linear-gradient(180deg, #ebd391 0%, #c39c4b 100%);
+        --hairline: rgba(212, 178, 106, 0.24);
+        --won: #86dba8;
+        --sans: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+        --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+      }
+      html {
+        font-size: min(1vw, 1.7778vh);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 10.5rem minmax(0, 1fr);
+        gap: 0.7rem;
+        padding: 0.7rem;
+        background: radial-gradient(120% 90% at 50% 0%, #17224a 0%, #0a1024 62%, #070b1a 100%);
+        color: var(--ivory);
+        font-family: var(--sans);
+        font-size: 1.5rem;
+        font-variant-numeric: lining-nums;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        padding: 0;
+        text-align: inherit;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      /* What can be tapped looks it: teams are cards, pools are pills, names in lists are underlined. */
+      button:active {
+        opacity: 0.7;
+      }
+      .tap {
+        padding: 0.7rem 1.4rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .tap.bare {
+        padding: 0;
+        border: 0;
+        background: none;
+      }
+      .sidetap {
+        display: block;
+        width: 100%;
+      }
+      .cardhead {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .link {
+        min-height: 2.2rem;
+        text-decoration: underline;
+        text-decoration-color: rgba(212, 178, 106, 0.55);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+      }
+      .poolpill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.8rem;
+        padding: 0 0.9rem;
+        border: 1px solid var(--gold);
+        border-radius: 1.4rem;
+        color: var(--gold);
+        font-weight: 800;
+        white-space: nowrap;
+      }
+      .poolpill::after {
+        content: '›';
+        margin-left: 0.5rem;
+      }
+      .kicker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+      }
+      .sponsors {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        min-height: 0;
+      }
+      .sponsor {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.7rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.6rem;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--dim);
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+      /* The toss takes the sponsors' place until the game starts, with room for its lines. */
+      body.tossing {
+        grid-template-columns: 17rem minmax(0, 1fr);
+      }
+      .sponsors.summary .sponsor {
+        display: none;
+      }
+      #tosssummary {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        padding: 1rem;
+        overflow-y: auto;
+        border: 1px solid var(--gold);
+        border-radius: 0.6rem;
+        background: var(--panel);
+      }
+      #tosssummary[hidden] {
+        display: none;
+      }
+      #tosssummary .h {
+        margin: 0;
+        font-size: 1.6rem;
+        white-space: nowrap;
+      }
+      .tossline {
+        padding-bottom: 0.7rem;
+        border-bottom: 1px solid var(--hairline);
+        font-size: 1.5rem;
+        font-weight: 600;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+      .tossline strong {
+        display: block;
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: var(--gold);
+      }
+      .tossline:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .sponsor img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+      .main {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+      }
+      .head {
+        flex: none;
+        height: 4.6rem;
+      }
+      .nav {
+        flex: none;
+        height: 6.4rem;
+      }
+      .stage {
+        flex: 1;
+      }
+      /* Another court calling its players. Tapping it goes to that court. */
+      #callbar {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .callrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.8rem;
+        width: 100%;
+        min-height: 3.6rem;
+        padding: 0 1.2rem;
+        border-radius: 0.6rem;
+        background: var(--gold-fill);
+        color: var(--ink);
+        font-size: 1.7rem;
+        font-weight: 800;
+        text-align: center;
+      }
+      .callrow::after {
+        content: '›';
+      }
+      .callrow.flash {
+        animation: callflash 0.5s ease-out 3;
+      }
+
+      /* Along the top: which court, and while someone browses, how long until it goes back. */
+      .head {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        padding: 0 1.2rem;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        border-radius: 0.6rem;
+        background: var(--panel);
+      }
+      .court {
+        font-family: var(--serif);
+        font-size: 3rem;
+        font-weight: 600;
+        color: var(--gold);
+        white-space: nowrap;
+      }
+      .where {
+        flex: 1;
+        min-width: 0;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--dim);
+      }
+      .where .poolpill {
+        min-height: 3.2rem;
+      }
+      .courtbutton {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        height: 3.8rem;
+        padding: 0 1.1rem;
+        margin-left: -0.5rem;
+        border: 1px solid var(--gold);
+        border-radius: 0.6rem;
+        line-height: 1;
+      }
+      .courtbutton::after {
+        content: '▾';
+        font-family: var(--sans);
+        font-size: 1.7rem;
+      }
+      .courtbutton.open {
+        background: var(--gold-fill);
+        color: var(--ink);
+      }
+      .homebutton {
+        min-height: 3.4rem;
+        font-size: 1.3rem;
+      }
+      .homebutton::after {
+        content: none;
+      }
+      /* All the courts, with the one on screen lit up. */
+      #picker {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        padding: 1rem;
+        background: rgba(7, 11, 26, 0.96);
+      }
+      .pickertop {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .pickertop .h {
+        margin: 0;
+      }
+      .pickertop button {
+        min-height: 3.6rem;
+        padding: 0 1.6rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.5rem;
+        font-size: 1.4rem;
+        font-weight: 700;
+      }
+      .pickergrid {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-rows: minmax(0, 1fr);
+        gap: 0.7rem;
+      }
+      .pick {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.8rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.7rem;
+        background: var(--panel);
+        text-align: center;
+      }
+      .pickname {
+        font-family: var(--serif);
+        font-size: 3.2rem;
+        font-weight: 600;
+        line-height: 1.1;
+        color: var(--gold);
+      }
+      .picktag {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      .pick b {
+        font-size: 3rem;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      .pick small {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--dim);
+      }
+      .pick.on {
+        background: var(--gold-fill);
+        border-color: transparent;
+      }
+      .pick.on,
+      .pick.on .pickname,
+      .pick.on .picktag,
+      .pick.on small {
+        color: var(--ink);
+      }
+      .clock {
+        font-size: 1.7rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .timebar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 0.4rem;
+        background: var(--gold);
+      }
+      .liveline {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.9rem;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+      .liveline .tag {
+        padding: 0.15rem 0.6rem;
+        border-radius: 0.4rem;
+        background: var(--gold-fill);
+        color: var(--ink);
+        font-size: 1.05rem;
+        font-weight: 800;
+      }
+      .liveline b {
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--gold);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        border-radius: 0.6rem;
+        background: linear-gradient(180deg, rgba(20, 29, 60, 0.75) 0%, rgba(14, 22, 48, 0.75) 100%);
+      }
+      #show {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.1rem;
+        padding: 1.4rem 2rem;
+        text-align: center;
+      }
+      /* Grows or shrinks as a whole until it fills the room: see fitContent. */
+      .fitbox {
+        width: 100%;
+      }
+      .fit {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.1rem;
+      }
+      .wrapnames .bigname {
+        white-space: normal;
+      }
+      .wrapnames .matchup {
+        grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+      }
+      .wrapnames .cards {
+        grid-template-columns: repeat(2, minmax(min-content, 1fr));
+      }
+      #browse {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      /* Along the bottom: always there, big enough for a finger. */
+      .nav {
+        display: grid;
+        grid-template-columns: 1.35fr repeat(5, minmax(0, 1fr));
+        gap: 0.5rem;
+      }
+      .nav button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        border: 1px solid var(--hairline);
+        border-radius: 0.6rem;
+        background: var(--panel);
+        font-size: 1.6rem;
+        font-weight: 700;
+        text-align: center;
+      }
+      .nav button.on {
+        background: var(--gold-fill);
+        border-color: transparent;
+        color: var(--ink);
+      }
+      .nav button:active {
+        transform: scale(0.98);
+      }
+
+      /* The main show. */
+      .kicker {
+        font-size: 1.3rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--gold);
+      }
+      .bigname {
+        font-family: var(--serif);
+        font-size: 4.4rem;
+        font-weight: 600;
+        line-height: 1.05;
+        white-space: nowrap;
+      }
+      .bigname em {
+        color: var(--gold);
+        font-weight: 500;
+      }
+      .versus {
+        font-family: var(--serif);
+        font-style: italic;
+        font-size: 2.2rem;
+        color: var(--gold);
+      }
+      .call {
+        padding: 0.8rem 3rem;
+        border-radius: 0.6rem;
+        background: var(--gold-fill);
+        color: var(--ink);
+        font-size: 2.6rem;
+        font-weight: 800;
+        animation: callpulse 1.8s ease-in-out infinite;
+      }
+      .call.flash {
+        animation:
+          callflash 0.5s ease-out 3,
+          callpulse 1.8s ease-in-out 1.5s infinite;
+      }
+      .call.done {
+        animation: none;
+      }
+      /* Players sign in here when they get to the court. */
+      .signin {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.6rem;
+      }
+      .signteam {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.7rem;
+      }
+      .signcards {
+        display: flex;
+        gap: 0.8rem;
+      }
+      .signcard {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+        width: 14.5rem;
+        padding: 0.8rem 0.6rem;
+        border: 1px solid var(--gold);
+        border-radius: 0.8rem;
+        background: var(--panel);
+      }
+      .signcard strong {
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1.15;
+      }
+      .signcard span {
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: var(--gold);
+      }
+      .signcard.here {
+        border-color: transparent;
+        background: var(--gold-fill);
+        color: var(--ink);
+      }
+      .signcard.here span {
+        color: var(--ink);
+      }
+      .signcard.here .face b {
+        border-color: var(--ink);
+        color: var(--ink);
+      }
+      @keyframes callflash {
+        50% {
+          transform: scale(1.08);
+          box-shadow: 0 0 3rem rgba(235, 211, 145, 0.8);
+        }
+      }
+      @keyframes callpulse {
+        50% {
+          box-shadow: 0 0 2.4rem rgba(235, 211, 145, 0.55);
+        }
+      }
+      .matchup {
+        display: grid;
+        grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+        align-items: center;
+        gap: 1.6rem;
+        width: 100%;
+      }
+      .teamcast {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.8rem;
+        min-width: 0;
+      }
+      .cast {
+        display: flex;
+        justify-content: center;
+        gap: 1.2rem;
+      }
+      .face {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        width: 10rem;
+        height: 12rem;
+      }
+      .face img {
+        max-width: 100%;
+        height: 100%;
+        object-fit: contain;
+        object-position: bottom;
+      }
+      .face b {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 8rem;
+        height: 8rem;
+        border-radius: 50%;
+        border: 1px solid var(--gold);
+        font-family: var(--serif);
+        font-size: 3rem;
+        font-weight: 500;
+      }
+      .small .face {
+        width: 7rem;
+        height: 8rem;
+      }
+      .small .face b {
+        width: 6rem;
+        height: 6rem;
+        font-size: 2.2rem;
+      }
+      .small .bigname {
+        font-size: 3.2rem;
+      }
+      .order {
+        width: 100%;
+        max-width: 66rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .order div {
+        display: grid;
+        grid-template-columns: 6rem minmax(0, 1fr) 2rem minmax(0, 1fr) 9rem;
+        align-items: center;
+        padding: 0.1rem 0.8rem;
+        border-top: 1px solid var(--hairline);
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
+      .order .t {
+        color: var(--gold);
+        font-weight: 800;
+        text-align: left;
+      }
+      .order .a {
+        text-align: right;
+      }
+      .order .b {
+        text-align: left;
+      }
+      .order .p {
+        color: var(--dim);
+        font-size: 1.15rem;
+        text-align: right;
+      }
+      .order i {
+        color: var(--gold);
+        font-family: var(--serif);
+      }
+
+      /* The players, side by side, with how their tournament has gone. */
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(max-content, 1fr));
+        gap: 2.4rem;
+        width: 100%;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+      }
+      .card .bigname {
+        font-size: 3.2rem;
+      }
+      .facts {
+        display: flex;
+        justify-content: center;
+        gap: 1.6rem;
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: var(--dim);
+      }
+      .facts strong {
+        display: block;
+        color: var(--ivory);
+        font-size: 1.35rem;
+      }
+      .stat {
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+      .stat b {
+        color: var(--gold);
+      }
+      .past {
+        width: 100%;
+        max-width: 30rem;
+      }
+      .past div {
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.5rem;
+        border-top: 1px solid var(--hairline);
+        font-size: 1.2rem;
+        font-weight: 600;
+        text-align: left;
+      }
+      .past b {
+        color: var(--dim);
+      }
+      .past span:last-child {
+        word-spacing: 0.5rem;
+      }
+      .past b.won {
+        color: var(--won);
+      }
+
+      /* The score, drawn as the court seen from the main entrance: the second entrance end on
+         top, the net across the middle, and everyone in the box they're really standing in.
+         Each team's score sits level with its half. */
+      .score {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 24rem;
+        grid-template-rows: 3rem minmax(0, 1fr) 0.5rem minmax(0, 1fr) 3rem;
+        gap: 0.5rem 1rem;
+        padding: 0.4rem 1.4rem;
+      }
+      .scoreend {
+        grid-column: 2;
+        align-self: center;
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1;
+        text-align: center;
+        color: var(--dim);
+      }
+      .scoreend.top {
+        grid-row: 1;
+      }
+      .scoreend.bottom {
+        grid-row: 5;
+      }
+      .score > .tile {
+        grid-column: 2;
+      }
+      .score > .tile.top {
+        grid-row: 2;
+      }
+      .score > .tile.bottom {
+        grid-row: 4;
+      }
+      /* The players get the whole height; only the score gives room to the entrance labels. */
+      .scorehalf {
+        grid-column: 1;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+        gap: 0.5rem;
+        min-height: 0;
+      }
+      .scorehalf.top {
+        grid-row: 1 / 3;
+      }
+      .scorehalf.bottom {
+        grid-row: 4 / 6;
+      }
+      .scorenet {
+        position: relative;
+        z-index: 1;
+        grid-column: 1;
+        grid-row: 3;
+        border-radius: 0.25rem;
+        background: var(--dim);
+      }
+      /* Sits on the net, with the line hidden behind it. */
+      .scorepool {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        padding: 0 0.3rem;
+        border-radius: 1.6rem;
+        background: var(--ink);
+        transform: translate(-50%, -50%);
+        white-space: nowrap;
+      }
+      .scorehalf > .sidetap {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr);
+        min-width: 0;
+        height: 100%;
+      }
+      .sidetap {
+        font-size: 2.1rem;
+        font-weight: 800;
+        line-height: 1.15;
+      }
+      /* Partners mirror each other: the photos together in the middle, the names outside. */
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        min-height: 0;
+      }
+      .scorehalf > :first-child .who {
+        flex-direction: row-reverse;
+        text-align: right;
+      }
+      .scorehalf > :last-child .who {
+        flex-direction: row;
+        text-align: left;
+      }
+      .who.serving {
+        color: var(--gold);
+      }
+      /* As tall as the half allows. */
+      .who .face {
+        position: relative;
+        flex: none;
+        align-self: stretch;
+        align-items: center;
+        width: 16rem;
+        height: auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .scorehalf > :first-child .face {
+        justify-content: flex-end;
+      }
+      .scorehalf > :last-child .face {
+        justify-content: flex-start;
+      }
+      .who .face img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        max-width: none;
+        height: 100%;
+        transform: scale(1.2);
+      }
+      /* Zoomed from the top, so heads stay in and it's the legs that go. */
+      .scorehalf > :first-child .face img {
+        object-position: right top;
+        transform-origin: right top;
+      }
+      .scorehalf > :last-child .face img {
+        object-position: left top;
+        transform-origin: left top;
+      }
+      .who .face b {
+        width: 15rem;
+        height: 15rem;
+        font-size: 5.4rem;
+      }
+      .who.serving .face b {
+        border-width: 0.3rem;
+      }
+      .whotext {
+        flex: 1;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .scorehalf .whotext:only-child {
+        text-align: center;
+      }
+      /* One line of a name or a label, as wide as its words, so a wipe starts on the first
+         letter. Each one hugs the photo. */
+      .ln {
+        display: block;
+      }
+      .ln,
+      .who .role {
+        width: fit-content;
+      }
+      .scorehalf > :first-child .ln,
+      .scorehalf > :first-child .role {
+        margin-left: auto;
+      }
+      .scorehalf .whotext:only-child .ln,
+      .scorehalf .whotext:only-child .role {
+        margin-inline: auto;
+      }
+      /* Always takes up its line, so names don't jump when the serve moves. */
+      .role {
+        display: block;
+        min-height: 2.2rem;
+        font-size: 1.7rem;
+        font-weight: 800;
+        line-height: 2.2rem;
+        color: var(--dim);
+      }
+      .who.serving .role {
+        color: var(--gold);
+      }
+      .ball {
+        display: inline-block;
+        width: 1.5rem;
+        height: 1.5rem;
+        margin-right: 0.5rem;
+        border-radius: 50%;
+        background: var(--gold-fill);
+      }
+      .tile {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        align-self: stretch;
+        min-height: 0;
+        border-radius: 1.2rem;
+        background: var(--gold-fill);
+        color: var(--ink);
+        font-size: 14rem;
+        font-weight: 800;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .tile small {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.9rem;
+        font-size: 1.4rem;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+      .tile.bump {
+        animation: bump 0.45s ease-out;
+      }
+      @keyframes bump {
+        35% {
+          transform: scale(1.06);
+        }
+      }
+      /* The coin stays moonstone. */
+      .coin {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 13rem;
+        height: 13rem;
+        border-radius: 50%;
+        color: #27345c;
+        background: linear-gradient(135deg, #f4f6fc, #c9d6f2 38%, #a3b4dc 62%, #e6e0f8);
+        box-shadow: 0 1rem 2.4rem rgba(0, 0, 0, 0.5);
+        font-family: var(--serif);
+        font-size: 7rem;
+        font-weight: 600;
+        perspective: 40rem;
+      }
+      .coin.spin {
+        animation: coinspin 0.4s linear infinite;
+      }
+      .coin.landed {
+        animation: coinland 0.9s cubic-bezier(0.2, 1, 0.4, 1) both;
+      }
+      @keyframes coinspin {
+        to {
+          transform: rotateY(360deg);
+        }
+      }
+      @keyframes coinland {
+        from {
+          transform: rotateY(900deg);
+        }
+        to {
+          transform: none;
+        }
+      }
+      .tossrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3rem;
+      }
+      .say {
+        font-family: var(--serif);
+        font-style: italic;
+        font-size: 2.8rem;
+        color: var(--gold);
+      }
+      .bigsponsors {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+      }
+      .bigsponsors .sponsor {
+        font-size: 2.4rem;
+      }
+
+      /* Browsing. */
+      .tabs {
+        flex: none;
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.7rem 0.9rem 0;
+        overflow-x: auto;
+      }
+      .tabs button,
+      .backline button {
+        flex: none;
+        min-height: 3.6rem;
+        padding: 0 1.3rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.5rem;
+        font-size: 1.35rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .tabs button.on {
+        background: var(--gold-fill);
+        border-color: transparent;
+        color: var(--ink);
+      }
+      .scroller {
+        flex: 1;
+        min-height: 0;
+        padding: 0.9rem;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        scrollbar-color: var(--gold) transparent;
+        scrollbar-width: thin;
+      }
+      .h {
+        margin: 0.5rem 0 0.6rem;
+        font-family: var(--serif);
+        font-size: 2.4rem;
+        font-weight: 600;
+        color: var(--gold);
+      }
+      .h:first-child {
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+      }
+      .tile-button {
+        display: block;
+        width: 100%;
+        min-height: 4.6rem;
+        padding: 0.7rem 1rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .tile-button small {
+        display: block;
+        margin-top: 0.15rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--dim);
+      }
+      .courts {
+        min-height: 100%;
+        grid-auto-rows: minmax(0, 1fr);
+      }
+      .courts .tile-button {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.7rem;
+        font-size: 2rem;
+        text-align: center;
+      }
+      .courts .tile-button small {
+        font-size: 1.3rem;
+      }
+      .courts .stat b {
+        font-size: 3.4rem;
+      }
+      .courts .tile-button {
+        cursor: pointer;
+      }
+      .tile-button.live {
+        border-color: var(--gold);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        padding: 0.4rem 0.7rem;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--dim);
+        text-align: center;
+      }
+      th:nth-child(2) {
+        text-align: left;
+      }
+      td {
+        padding: 0;
+        border-top: 1px solid var(--hairline);
+        font-size: 1.5rem;
+        font-weight: 700;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      td button {
+        width: 100%;
+        min-height: 4rem;
+        padding: 0 0.7rem;
+        font-weight: 700;
+      }
+      td.place {
+        width: 4rem;
+        color: var(--gold);
+      }
+      td.num {
+        width: 6rem;
+      }
+      .rows {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .matchrow {
+        display: grid;
+        grid-template-columns: 6rem 4rem minmax(0, 1fr) 15rem minmax(0, 1fr);
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 4rem;
+        padding: 0 0.8rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.5rem;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+      .matchrow.live {
+        border-color: var(--gold);
+      }
+      .matchrow .t {
+        color: var(--gold);
+        font-weight: 800;
+      }
+      .matchrow .c {
+        color: var(--dim);
+      }
+      .matchrow button {
+        min-height: 3.6rem;
+        font-weight: 700;
+      }
+      .matchrow .a {
+        text-align: right;
+      }
+      .matchrow .mid {
+        text-align: center;
+        white-space: nowrap;
+        word-spacing: 0.4rem;
+        font-size: 1.25rem;
+        color: var(--dim);
+      }
+      .matchrow .mid b {
+        color: var(--gold);
+        font-size: 1.5rem;
+      }
+      .matchrow button.won {
+        color: var(--won);
+      }
+      .bracket {
+        display: flex;
+        gap: 1rem;
+        min-height: 100%;
+      }
+      .round {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .round > span {
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      .round > div {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        gap: 0.6rem;
+      }
+      .tie {
+        padding: 0.5rem 0.8rem;
+        border: 1px solid var(--hairline);
+        border-radius: 0.5rem;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .tie small {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--dim);
+      }
+      .tie div {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+        font-size: 1.7rem;
+        font-weight: 700;
+      }
+      .tie > div {
+        align-items: center;
+        min-height: 3rem;
+      }
+      .courts .link {
+        padding: 0.2rem 0;
+      }
+      .tie .tbd {
+        color: var(--dim);
+        font-weight: 600;
+      }
+      .tie .won {
+        color: var(--won);
+      }
+      .backline {
+        display: flex;
+        margin-bottom: 0.7rem;
+      }
+      .teamtop {
+        display: flex;
+        align-items: flex-end;
+        gap: 1.6rem;
+        margin-bottom: 0.9rem;
+      }
+      .teamtop .bigname {
+        font-size: 3.4rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sponsors" id="sponsors" aria-label="Sponsors">
+      <div id="tosssummary" hidden></div>
+      <div class="sponsor" data-image="sponsor-1.png">Sponsor</div>
+      <div class="sponsor" data-image="sponsor-2.png">Sponsor</div>
+      <div class="sponsor" data-image="sponsor-3.png">Sponsor</div>
+    </div>
+    <div class="main">
+      <div class="head" id="head"></div>
+      <div id="callbar" hidden></div>
+      <div class="stage">
+        <div id="show"></div>
+        <div id="browse" hidden></div>
+        <div id="picker" hidden></div>
+      </div>
+      <nav class="nav" id="nav" aria-label="Pages"></nav>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const $ = (id) => document.getElementById(id);
+      const PAGES = [
+        ['show', 'Now on court'],
+        ['teams', 'Teams'],
+        ['pools', 'Pools'],
+        ['bracket', 'Bracket'],
+        ['courts', 'Courts'],
+        ['schedule', 'Schedule'],
+      ];
+
+      let state = { graphic: null, scoreboard: null, browse: null };
+      // Where someone has got to, or null when the main show is up. The back button's way home
+      // is the list of where they came from.
+      let page = null;
+      let trail = [];
+      let secondsAllowed = 20;
+      let timerEnds = 0;
+      let lastCall = null;
+      let flashedCall = null;
+      let pickerOpen = false;
+
+      function esc(text) {
+        const el = document.createElement('div');
+        el.textContent = text ?? '';
+        return el.innerHTML.replace(/"/g, '&quot;');
+      }
+      const styledName = (name) => esc(name).replace(/ &amp; /g, ' <em>&amp;</em> ');
+      const homeCourt = () => state.browse?.court ?? state.graphic?.court ?? '';
+      // Another court's name, while someone's looking at that court.
+      const otherCourt = () => (page?.startsWith('court:') ? page.slice('court:'.length) : null);
+      const courtName = () => otherCourt() ?? homeCourt();
+      const browsing = () => page != null || pickerOpen;
+
+      // What the main screen shows: this court, or whichever one someone picked.
+      function courtOnScreen() {
+        const name = otherCourt();
+        if (name == null) return state;
+        const court = state.browse?.courts?.find((row) => row.name === name);
+        return { graphic: court?.graphic ?? null, scoreboard: court?.scoreboard ?? null };
+      }
+      const clock = (time) =>
+        new Date(time).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+      // The server sends a moment; the test page's made-up matches are already "15:30".
+      const shortTime = (time) => (time?.includes('T') ? clock(time) : (time ?? ''));
+      const tell = (text) => {
+        if (params.has('preview')) window.parent.postMessage({ monitorLog: text }, location.origin);
+      };
+
+      function initials(name) {
+        return name
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((word) => word[0])
+          .join('')
+          .toUpperCase();
+      }
+      function photoUrl(photo) {
+        return photo.startsWith('/')
+          ? photo
+          : `/api/static/player-photos/${encodeURIComponent(photo)}`;
+      }
+      function face(player) {
+        return `<div class="face">${
+          player.photo
+            ? `<img src="${esc(photoUrl(player.photo))}" alt="" decoding="sync">`
+            : `<b>${esc(initials(player.name))}</b>`
+        }</div>`;
+      }
+      const cast = (players) => `<div class="cast">${players.map(face).join('')}</div>`;
+
+      function playerFacts(player) {
+        const facts = [
+          player.dupr != null ? `DUPR ${Number(player.dupr).toFixed(2)}` : null,
+          player.age != null ? `Age ${player.age}` : null,
+        ].filter(Boolean);
+        return `<div>${`<strong>${esc(player.name)}</strong>`}${esc(facts.join(' · '))}</div>`;
+      }
+
+      /* ---------- Everything with a name goes to its page. ---------- */
+
+      const teamTap = (name, inside, style = '') =>
+        state.browse?.teams?.[name]
+          ? `<button class="tap ${style}" data-go="team:${esc(name)}">${inside}</button>`
+          : `<div class="${style}">${inside}</div>`;
+
+      const teamLink = (name, style = '') =>
+        state.browse?.teams?.[name]
+          ? `<button class="link ${style}" data-go="team:${esc(name)}">${esc(name)}</button>`
+          : `<span class="${style}">${esc(name)}</span>`;
+
+      // A pool's page, or a knockout's bracket, whichever this name is.
+      function poolLink(name, style = 'poolpill') {
+        const target = state.browse?.pools?.some((pool) => pool.name === name)
+          ? 'pools'
+          : state.browse?.brackets?.some((bracket) => bracket.name === name)
+            ? 'bracket'
+            : null;
+        if (target == null) return `<span>${esc(name)}</span>`;
+        return `<button class="${style}" data-go="${target}:${esc(name)}">${esc(name)}</button>`;
+      }
+
+      /* ---------- The main show: what the referee's stage calls for. ---------- */
+
+      function matchup(graphic, small = false) {
+        return `<div class="matchup ${small ? 'small' : ''}">
+          ${teamTap(graphic.team1.name, `${cast(graphic.team1.players)}<div class="bigname">${styledName(graphic.team1.name)}</div>`, 'teamcast')}
+          <div class="versus">versus</div>
+          ${teamTap(graphic.team2.name, `${cast(graphic.team2.players)}<div class="bigname">${styledName(graphic.team2.name)}</div>`, 'teamcast')}
+        </div>`;
+      }
+
+      // Tapping your own card signs you in. Tapping it again undoes a wrong tap.
+      function signInCards(graphic) {
+        const team = (side) => `<div class="signteam">
+          <div class="signcards">${side.players
+            .map(
+              (
+                player,
+              ) => `<button class="signcard ${player.here ? 'here' : ''}" data-signin="${player.id}">
+                ${face(player)}
+                <strong>${esc(player.name)}</strong>
+                <span>${player.here ? '✓ Signed in' : 'Tap to sign in'}</span>
+              </button>`,
+            )
+            .join('')}</div>
+        </div>`;
+        return `<div class="signin small">${team(graphic.team1)}<div class="versus">versus</div>${team(graphic.team2)}</div>`;
+      }
+
+      function orderOfPlay(graphic) {
+        if (graphic.following.length === 0) return '';
+        return `<div class="order">${graphic.following
+          .map(
+            (match, index) => `<div>
+              <span class="t">${esc(match.start_time ? clock(match.start_time) : `#${index + 2}`)}</span>
+              ${teamLink(match.team1, 'a')}<i>&nbsp;v</i>
+              ${teamLink(match.team2, 'b')}<span class="p">${poolLink(match.pool, 'link')}</span>
+            </div>`,
+          )
+          .join('')}</div>`;
+      }
+
+      function pastMatches(team) {
+        if (team.previous.length === 0) return '';
+        const letters = { true: ['won', 'W'], false: ['', 'L'], null: ['', 'D'] };
+        return `<div class="past">${team.previous
+          .map((match) => {
+            const [style, letter] = letters[match.won];
+            return `<div><b class="${style}">${letter}</b>${teamLink(match.opponent)}
+              <span>${match.games.map((game) => esc(game.join('–'))).join('  ')}</span></div>`;
+          })
+          .join('')}</div>`;
+      }
+
+      function teamCard(team, won) {
+        const played = team.wins + team.losses > 0;
+        const diff = `${team.point_difference > 0 ? '+' : ''}${team.point_difference}`;
+        return `<div class="card">
+          ${teamTap(
+            team.name,
+            `${cast(team.players)}
+            <div class="bigname">${styledName(team.name)}</div>
+            <div class="facts">${team.players.map(playerFacts).join('')}</div>`,
+            'cardhead',
+          )}
+          ${played || won ? `<div class="stat">${played ? `Record ${team.wins}–${team.losses} · Points ${diff}` : ''}${played && won ? ' · ' : ''}${won ? '<b>Won the toss</b>' : ''}</div>` : ''}
+          ${pastMatches(team)}
+        </div>`;
+      }
+
+      const TOSS_PICKS = {
+        SERVE: 'will serve first',
+        RECEIVE: 'will receive first',
+        DEFER: 'deferred',
+      };
+      const faceName = (side) => (side === 'HEADS' ? 'Heads' : 'Tails');
+
+      function tossHtml(graphic) {
+        const toss = graphic.toss;
+        if (toss == null) return `<div class="say">Coin toss</div>`;
+        const teamOf = (side) => (side === 1 ? graphic.team1 : graphic.team2);
+        const person = (side, name) =>
+          teamOf(side).players.find((player) => player.name === name) ?? { name, photo: null };
+        const moment = (side, people, name, say) =>
+          `${teamTap(teamOf(side).name, `${cast(people)}<div class="bigname">${styledName(name)}</div>`, 'teamcast')}<div class="say">${esc(say)}</div>`;
+
+        if (toss.latest === 'STARTER') {
+          const { team, name } = toss.starters.at(-1);
+          const { team: picker, choice } = toss.picks.find(
+            (pick) => pick.choice === 'SERVE' || pick.choice === 'RECEIVE',
+          );
+          const serves = (choice === 'SERVE') === (team === picker);
+          return moment(
+            team,
+            [person(team, name)],
+            name,
+            serves ? 'serves first' : 'receives first',
+          );
+        }
+        if (toss.latest === 'PICK') {
+          const { team, choice, end } = toss.picks.at(-1);
+          const say =
+            choice === 'SIDE'
+              ? `chose the ${end === 'BACK' ? 'second' : 'main'} entrance end`
+              : TOSS_PICKS[choice];
+          return moment(team, teamOf(team).players, teamOf(team).name, say);
+        }
+        const caller = person(toss.caller_team, toss.caller_name);
+        const callerTap = teamTap(teamOf(toss.caller_team).name, cast([caller]), 'teamcast');
+        if (toss.call == null) {
+          return moment(toss.caller_team, [caller], toss.caller_name, 'is doing the toss');
+        }
+        if (toss.result == null) {
+          return `<div class="tossrow">${callerTap}<div class="coin spin"></div></div>
+            <div class="bigname">${esc(toss.caller_name)} called ${faceName(toss.call)}</div>`;
+        }
+        const winner = teamOf(toss.call === toss.result ? toss.caller_team : 3 - toss.caller_team);
+        return `<div class="tossrow">${callerTap}<div class="coin landed">${esc(toss.result[0])}</div></div>
+          <div class="bigname">${faceName(toss.result)}</div>
+          <div class="say">${teamLink(winner.name)} won the toss</div>`;
+      }
+
+      function scoreHtml(graphic, board) {
+        const serveLabel = { 1: '1st serve', 2: '2nd serve' }[board.server_number] ?? 'Serves';
+        const serveTag = `<span class="role"><i class="ball"></i>${serveLabel}</span>`;
+        const receiveTag = '<span class="role">Receives</span>';
+        // Between games nobody knows yet who stands where, so the team gets the label instead.
+        const peopleKnown = board.server_name != null && board.receiver_name != null;
+        const box = (player, team, teamNumber) => {
+          const serving = teamNumber === board.serving_team;
+          const hasRole = peopleKnown
+            ? player.name === (serving ? board.server_name : board.receiver_name)
+            : true;
+          const tag = !hasRole ? '<span class="role"></span>' : serving ? serveTag : receiveTag;
+          const lit = !hasRole ? '' : serving ? 'serving' : 'receiving';
+          return teamTap(
+            team,
+            `<div class="who ${lit}" data-player="${esc(player.name)}">${player.photoless ? '' : face(player)}<div class="whotext">${esc(player.name)}${tag}</div></div>`,
+            'bare sidetap',
+          );
+        };
+        const half = (teamNumber, where) => {
+          const team = teamNumber === 1 ? board.team1 : board.team2;
+          const players = (teamNumber === 1 ? graphic.team1 : graphic.team2).players;
+          // Left to right as seen from the court, when it's known who's standing where.
+          const places = board.places?.[teamNumber];
+          const inPlace = places?.every((name) => players.some((player) => player.name === name))
+            ? places.map((name) => players.find((player) => player.name === name))
+            : players;
+          const boxes = inPlace.length
+            ? inPlace.map((player) => box(player, team, teamNumber))
+            : [box({ name: team, photoless: true }, team, teamNumber)];
+          return `<div class="scorehalf ${where}">${boxes.join('')}</div>`;
+        };
+        const tile = (teamNumber, where) => {
+          const score = teamNumber === 1 ? board.score1 : board.score2;
+          const games = teamNumber === 1 ? board.games1 : board.games2;
+          return `<div class="tile ${where}" id="tile${teamNumber}">${score}${board.best_of > 1 ? `<small>Games ${games}</small>` : ''}</div>`;
+        };
+        const top = board.top_team ?? 1;
+        return `<div class="score">
+          ${half(top, 'top')}
+          <div class="scorenet">
+            <div class="scorepool kicker">${board.best_of > 1 ? `Game ${board.game_number} · ` : ''}${poolLink(graphic.pool)}</div>
+          </div>
+          ${half(3 - top, 'bottom')}
+          <div class="scoreend top">Second entrance</div>
+          ${tile(top, 'top')}
+          ${tile(3 - top, 'bottom')}
+          <div class="scoreend bottom">Main entrance</div>
+        </div>`;
+      }
+
+      // The score and the sponsors already take the whole room; everything else grows into it.
+      function stageHtml(graphic, scoreboard) {
+        const html = showHtml(graphic, scoreboard);
+        return graphic != null && graphic.stage !== 'SCORE'
+          ? `<div class="fitbox"><div class="fit">${html}</div></div>`
+          : html;
+      }
+
+      function showHtml(graphic, scoreboard) {
+        if (graphic == null) {
+          const sponsors = ['sponsor-1.png', 'sponsor-2.png', 'sponsor-3.png'];
+          return `<div class="bigsponsors">${sponsors
+            .map(
+              (image) =>
+                `<div class="sponsor"><img src="${image}" alt="Sponsor" onerror="this.replaceWith('Sponsor')"></div>`,
+            )
+            .join('')}</div><div class="kicker">No more matches on this court</div>`;
+        }
+        const where = `Court ${esc(graphic.court)} · ${poolLink(graphic.pool)}`;
+        switch (graphic.stage) {
+          case 'SCORE':
+            return scoreHtml(graphic, scoreboard);
+          case 'INTRO': {
+            // Only at the court itself: you sign in where you're standing.
+            const signing = graphic.court === homeCourt();
+            const everyone =
+              signing && [...graphic.team1.players, ...graphic.team2.players].every((p) => p.here);
+            return `<div class="call ${everyone ? 'done' : ''}" data-calls="${graphic.calls ?? 0}">${
+              everyone
+                ? "Everyone's here"
+                : signing
+                  ? 'Your match is ready'
+                  : `Come to Court ${esc(graphic.court)}`
+            }</div>
+              ${signing ? signInCards(graphic) : matchup(graphic)}
+              ${signing && !everyone ? '<div class="say">Tap your card to sign in</div>' : ''}
+              <div class="kicker">${poolLink(graphic.pool)}</div>`;
+          }
+          case 'TOSS':
+            return `<div class="kicker">Coin toss · ${where}</div>${tossHtml(graphic)}`;
+          case 'PLAYERS':
+            return `<div class="kicker">${where}</div>
+              <div class="cards small">${teamCard(graphic.team1, graphic.toss_winner === 1)}${teamCard(graphic.team2, graphic.toss_winner === 2)}</div>`;
+          case 'RESULT': {
+            const winner = graphic.winner === 1 ? graphic.team1 : graphic.team2;
+            return `<div class="kicker">Final · ${where}</div>
+              ${teamTap(winner.name, `${cast(winner.players)}<div class="bigname">${styledName(winner.name)}</div>`, 'teamcast')}
+              <div class="say">${graphic.games.map((game) => esc(game.join('–'))).join(' · ')}</div>`;
+          }
+          default: {
+            const when = graphic.start_time ? clock(graphic.start_time) : null;
+            return `<div class="kicker">Up next · ${when ? `${esc(when)} · ` : ''}${where}</div>
+              ${matchup(graphic, graphic.following.length > 0)}${orderOfPlay(graphic)}`;
+          }
+        }
+      }
+
+      /* The biggest size the stage's content fits at. Measured on the box around it, which
+         isn't zoomed itself, so the numbers stay real pixels. */
+      let showNeedsFit = false;
+      function fitContent(show) {
+        const box = show.querySelector('.fitbox');
+        const inner = show.querySelector('.fit');
+        if (box == null || inner == null) return;
+        const style = getComputedStyle(show);
+        const room =
+          show.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        const fitsAt = (size) => {
+          inner.style.zoom = size;
+          return box.getBoundingClientRect().height <= room && box.scrollWidth <= box.clientWidth;
+        };
+        const biggest = () => {
+          let small = 0.4;
+          let big = 2.4;
+          for (let step = 0; step < 9; step += 1) {
+            const middle = (small + big) / 2;
+            if (fitsAt(middle)) small = middle;
+            else big = middle;
+          }
+          return small;
+        };
+        let size = biggest();
+        // A long name holding everything back gets two lines, if that lets it all be bigger.
+        if (size < 1.2) {
+          inner.classList.add('wrapnames');
+          const wrapped = biggest();
+          if (wrapped > size) size = wrapped;
+          else inner.classList.remove('wrapnames');
+        }
+        inner.style.zoom = size;
+      }
+
+      /* ---------- Players changing sides, in motion. ----------
+         Names wipe away line by line, left to right, the server's first. The photos then cross,
+         the server's on top, and the names wipe back in the same order. */
+
+      const WIPE_MS = 220;
+      const LINE_MS = 90;
+      const SLIDE_AT_MS = 200;
+      const SLIDE_MS = 750;
+      const WIPE_AWAY = [{ clipPath: 'inset(0 0 0 0)' }, { clipPath: 'inset(0 0 0 100%)' }];
+      const WIPE_BACK = [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }];
+
+      function readPlayers(root) {
+        return [...root.querySelectorAll('.who[data-player]')].map((who) => ({
+          who,
+          name: who.dataset.player,
+          half: who.closest('.scorehalf').classList.contains('top') ? 'top' : 'bottom',
+          first: who.parentElement.previousElementSibling == null,
+          serving: who.classList.contains('serving'),
+          role: who.querySelector('.role')?.textContent ?? '',
+        }));
+      }
+
+      // The name's words, grouped by the line they've landed on. Needs to be on screen to tell.
+      function nameLines(who) {
+        const text = who.querySelector('.whotext');
+        const split = [...text.querySelectorAll('.ln')];
+        if (split.length) return split;
+        const node = text.firstChild;
+        if (node?.nodeType !== Node.TEXT_NODE) return [];
+        const words = node.textContent.split(' ').map((word) => {
+          const span = document.createElement('span');
+          span.textContent = word;
+          return span;
+        });
+        node.replaceWith(...words.flatMap((word) => [word, ' ']));
+        const rows = [];
+        for (const word of words) {
+          const row = rows.at(-1);
+          if (row != null && row.top === word.offsetTop) row.words.push(word.textContent);
+          else rows.push({ top: word.offsetTop, words: [word.textContent] });
+        }
+        const lines = rows.map((row) => {
+          const line = document.createElement('span');
+          line.className = 'ln';
+          line.textContent = row.words.join(' ');
+          return line;
+        });
+        while (text.firstChild !== text.querySelector('.role')) text.firstChild.remove();
+        text.prepend(...lines);
+        return lines;
+      }
+
+      /* The server first, then their partner, then the other team. Each person's lines one after
+         the other. Returns how long it all takes. */
+      function wipe(people, frames) {
+        const server = people.find((person) => person.serving);
+        const rank = (person) => (person.serving ? 0 : person.half === server?.half ? 1 : 2);
+        let at = 0;
+        let end = 0;
+        for (const person of [...people].sort((a, b) => rank(a) - rank(b))) {
+          const lines = [
+            ...(person.nameChanged ? nameLines(person.who) : []),
+            ...(person.roleChanged && person.role ? [person.who.querySelector('.role')] : []),
+          ];
+          lines.forEach((line, row) => {
+            const delay = at + row * LINE_MS;
+            line.animate(frames, {
+              delay,
+              duration: WIPE_MS,
+              fill: 'both',
+              easing: 'ease-in-out',
+            });
+            end = Math.max(end, delay + WIPE_MS);
+          });
+          at += lines.length * LINE_MS;
+        }
+        return end;
+      }
+
+      // Where the picture itself starts, since each hugs the middle of its half.
+      function pictureLeft(face, first) {
+        const room = face.getBoundingClientRect();
+        const img = face.querySelector('img');
+        let wide = face.querySelector('b')?.getBoundingClientRect().width ?? room.width;
+        if (img != null && img.naturalHeight > 0) {
+          const fitted = Math.min(room.width, (room.height * img.naturalWidth) / img.naturalHeight);
+          wide = Math.min(room.width, fitted * 1.2);
+        }
+        return first ? room.right - wide : room.left;
+      }
+
+      const slide = (element, dx, dy, zIndex) => {
+        element.style.zIndex = zIndex;
+        element.animate([{ transform: 'none' }, { transform: `translate(${dx}px, ${dy}px)` }], {
+          delay: SLIDE_AT_MS,
+          duration: SLIDE_MS,
+          fill: 'both',
+          easing: 'cubic-bezier(0.65, 0, 0.35, 1)',
+        });
+      };
+
+      // Starts the move, if this is one. Without anybody or any label changing it's left alone.
+      function startMove(html, finish) {
+        const show = $('show');
+        const incoming = document.createElement('template');
+        incoming.innerHTML = html;
+        const before = readPlayers(show);
+        const after = readPlayers(incoming.content);
+        if (before.length === 0 || before.length !== after.length) return false;
+        const slotOf = (half, first) =>
+          before.find((person) => person.half === half && person.first === first);
+        const plans = [];
+        for (const was of before) {
+          const now = after.find((person) => person.name === was.name);
+          const slot = now && slotOf(now.half, now.first);
+          if (slot == null) return false;
+          const moved = now.half !== was.half || now.first !== was.first;
+          plans.push({
+            name: was.name,
+            was,
+            slot,
+            moved,
+            nameChanged: moved || was.serving !== now.serving,
+            roleChanged: moved || was.role !== now.role,
+          });
+        }
+        if (!plans.some((plan) => plan.nameChanged || plan.roleChanged)) return false;
+
+        let last = wipe(
+          plans.map((plan) => ({ ...plan.was, ...plan })),
+          WIPE_AWAY,
+        );
+        const movers = plans.filter((plan) => plan.moved);
+        for (const { was, slot } of movers) {
+          const face = was.who.querySelector('.face');
+          const target = slot.who.querySelector('.face');
+          if (face == null || target == null) continue;
+          const dx = pictureLeft(target, slot.first) - pictureLeft(face, was.first);
+          const dy = target.getBoundingClientRect().top - face.getBoundingClientRect().top;
+          slide(face, dx, dy, was.serving ? 4 : 2);
+        }
+        if (movers.length) last = Math.max(last, SLIDE_AT_MS + SLIDE_MS);
+
+        // The score doesn't wait for anyone, and goes with its team if the ends changed.
+        for (const tile of show.querySelectorAll('.tile')) {
+          const next = incoming.content.getElementById(tile.id);
+          if (next == null) continue;
+          if (tile.textContent !== next.textContent) {
+            tile.innerHTML = next.innerHTML;
+            tile.classList.add('bump');
+          }
+          const other = [...show.querySelectorAll('.tile')].find((box) => box !== tile);
+          if (other && next.classList.contains('top') !== tile.classList.contains('top')) {
+            const dy = other.getBoundingClientRect().top - tile.getBoundingClientRect().top;
+            slide(tile, 0, dy, tile.classList.contains('top') ? 3 : 2);
+          }
+        }
+
+        moveTo = html;
+        moveTimer = setTimeout(() => {
+          moveTimer = null;
+          moveTo = null;
+          finish();
+          if (show.hidden) return;
+          const landed = readPlayers(show);
+          wipe(
+            plans.map((plan) => ({
+              ...landed.find((person) => person.name === plan.name),
+              nameChanged: plan.nameChanged,
+              roleChanged: plan.roleChanged,
+            })),
+            WIPE_BACK,
+          );
+        }, last);
+        return true;
+      }
+
+      let moveTimer = null;
+      let moveTo = null;
+      let shownHtml = null;
+      let shownScores = null;
+      let shownCourt = null;
+      let shownMatch = null;
+      function drawShow() {
+        const { graphic, scoreboard } = courtOnScreen();
+        const html = stageHtml(graphic, scoreboard);
+        if (html === moveTo) return;
+        // Something newer came in mid-move: it goes straight to where things are now.
+        if (moveTimer != null) {
+          clearTimeout(moveTimer);
+          moveTimer = null;
+          moveTo = null;
+          shownHtml = null;
+        }
+        if (html === shownHtml) return;
+        const board = graphic?.stage === 'SCORE' ? scoreboard : null;
+        // Going to another court isn't a point being scored.
+        const sameCourt = shownCourt === courtName();
+        const sameMatch = sameCourt && shownMatch != null && shownMatch === graphic?.key;
+        const scored = shownScores != null && board != null && sameMatch;
+        const put = () => {
+          $('show').innerHTML = html;
+          shownHtml = html;
+          showNeedsFit = true;
+          // Only a new call flashes, not somebody signing in.
+          const call = $('show').querySelector('.call');
+          const callKey = call ? `${graphic.key}:${graphic.calls ?? 0}` : null;
+          if (call && callKey !== flashedCall) call.classList.add('flash');
+          flashedCall = callKey;
+        };
+        const moved = scored && !$('show').hidden && startMove(html, put);
+        if (!moved) {
+          put();
+          if (scored) {
+            if (shownScores[0] !== board.score1) $('tile1').classList.add('bump');
+            if (shownScores[1] !== board.score2) $('tile2').classList.add('bump');
+          }
+        }
+        shownCourt = courtName();
+        shownMatch = graphic?.key ?? null;
+        shownScores = board != null ? [board.score1, board.score2] : null;
+      }
+
+      /* ---------- Tap to browse: everything here is only looked at. ---------- */
+
+      const teamsOf = () => state.browse?.teams ?? {};
+      const poolsOf = () => state.browse?.pools ?? [];
+
+      function standings(pool) {
+        const rows = new Map(
+          pool.teams.map((name) => [name, { name, played: 0, wins: 0, losses: 0, diff: 0 }]),
+        );
+        for (const match of pool.matches) {
+          if (match.state !== 'done') continue;
+          const [one, two] = [rows.get(match.team1), rows.get(match.team2)];
+          const won1 = match.games.filter(([a, b]) => a > b).length;
+          const won2 = match.games.length - won1;
+          const points = match.games.reduce((sum, [a, b]) => sum + a - b, 0);
+          one.played += 1;
+          two.played += 1;
+          (won1 > won2 ? one : two).wins += 1;
+          (won1 > won2 ? two : one).losses += 1;
+          one.diff += points;
+          two.diff -= points;
+        }
+        return [...rows.values()].sort(
+          (a, b) => b.wins - a.wins || b.diff - a.diff || a.name.localeCompare(b.name),
+        );
+      }
+
+      function matchRow(match) {
+        const done = match.state === 'done';
+        const won1 = done && match.games.filter(([a, b]) => a > b).length * 2 > match.games.length;
+        const middle =
+          match.state === 'live'
+            ? `<b>${match.score1}–${match.score2}</b> live`
+            : done
+              ? `<b>${match.games.map((game) => esc(game.join('–'))).join(' ')}</b>`
+              : 'v';
+        return `<div class="matchrow ${match.state === 'live' ? 'live' : ''}">
+          <span class="t">${esc(shortTime(match.time))}</span><span class="c">${esc(match.court)}</span>
+          ${teamLink(match.team1, `a ${won1 ? 'won' : ''}`)}
+          <span class="mid">${middle}</span>
+          ${teamLink(match.team2, done && !won1 ? 'won' : '')}
+        </div>`;
+      }
+
+      function teamsPage() {
+        return `<div class="scroller">${poolsOf()
+          .map(
+            (pool) =>
+              `<h2 class="h">${esc(pool.name)}</h2><div class="grid">${pool.teams
+                .map((name) => {
+                  const players = teamsOf()[name].players.map((player) => player.name);
+                  return `<button class="tile-button" data-go="team:${esc(name)}">${esc(name)}<small>${esc(players.join(' · '))}</small></button>`;
+                })
+                .join('')}</div>`,
+          )
+          .join('')}</div>`;
+      }
+
+      // Only when there's somewhere to go back to: the bottom row does the rest.
+      const backButton = () => (trail.length ? '<button data-back>‹ Back</button>' : '');
+
+      const emptyPage = (text) =>
+        `<div class="scroller"><div class="kicker" style="margin-top:2rem">${esc(text)}</div></div>`;
+
+      function poolPage(which) {
+        const pools = poolsOf();
+        const pool =
+          pools.find((row) => row.name === which) ??
+          pools.find((row) => row.name === state.graphic?.pool) ??
+          pools[0];
+        if (pool == null) return emptyPage('No pools yet');
+        return `<div class="tabs">${backButton()}${pools
+          .map(
+            (row) =>
+              `<button class="${row === pool ? 'on' : ''}" data-swap="pools:${esc(row.name)}">${esc(row.name)}</button>`,
+          )
+          .join('')}</div>
+        <div class="scroller">
+          <table>
+            <thead><tr><th></th><th>Team</th><th>Played</th><th>Won</th><th>Lost</th><th>Points</th></tr></thead>
+            <tbody>${standings(pool)
+              .map(
+                (row, index) => `<tr>
+                  <td class="place">${index + 1}</td>
+                  <td style="text-align:left"><button data-go="team:${esc(row.name)}">${esc(row.name)}</button></td>
+                  <td class="num">${row.played}</td><td class="num">${row.wins}</td><td class="num">${row.losses}</td>
+                  <td class="num">${row.diff > 0 ? '+' : ''}${row.diff}</td></tr>`,
+              )
+              .join('')}</tbody>
+          </table>
+          <h2 class="h" style="margin-top:1rem">Matches</h2>
+          <div class="rows">${pool.matches.map(matchRow).join('')}</div>
+        </div>`;
+      }
+
+      function teamPage(name) {
+        const team = teamsOf()[name];
+        const pool = poolsOf().find((row) => row.teams.includes(name));
+        const table = pool ? standings(pool) : [];
+        const place = table.findIndex((entry) => entry.name === name) + 1;
+        const row = table[place - 1];
+        const theirs = [...(pool?.matches ?? []), ...(state.browse?.knockouts ?? [])].filter(
+          (match) => match.team1 === name || match.team2 === name,
+        );
+        const coming = theirs.filter((match) => match.state !== 'done');
+        const played = theirs.filter((match) => match.state === 'done');
+        return `<div class="scroller">
+          <div class="backline"><button data-back>‹ Back</button></div>
+          <div class="teamtop small">${cast(team.players)}
+            <div>
+              <div class="bigname">${styledName(name)}</div>
+              <div class="facts" style="justify-content:flex-start;margin:0.4rem 0">${team.players.map(playerFacts).join('')}</div>
+              ${
+                pool
+                  ? `<div class="stat">${poolLink(pool.name, 'link')} · <b>${place}${['st', 'nd', 'rd'][place - 1] ?? 'th'}</b> · Record ${row.wins}–${row.losses} · Points ${row.diff > 0 ? '+' : ''}${row.diff}</div>`
+                  : ''
+              }
+            </div>
+          </div>
+          ${coming.length ? `<h2 class="h">Still to play</h2><div class="rows">${coming.map(matchRow).join('')}</div>` : ''}
+          ${played.length ? `<h2 class="h" style="margin-top:1rem">Played</h2><div class="rows">${played.map(matchRow).join('')}</div>` : ''}
+        </div>`;
+      }
+
+      function bracketPage(which) {
+        const brackets = state.browse?.brackets ?? [];
+        const bracket = brackets.find((row) => row.name === which) ?? brackets[0];
+        if (bracket == null) return emptyPage('No bracket yet');
+        const side = (name, score, won) =>
+          `<div class="${name == null ? 'tbd' : ''} ${won ? 'won' : ''}">${name == null ? '<span>To come</span>' : teamLink(name)}<span>${score ?? ''}</span></div>`;
+        return `<div class="tabs">${backButton()}${brackets
+          .map(
+            (row) =>
+              `<button class="${row === bracket ? 'on' : ''}" data-swap="bracket:${esc(row.name)}">${esc(row.name)}</button>`,
+          )
+          .join('')}</div>
+        <div class="scroller"><div class="bracket">${bracket.rounds
+          .map(
+            (round) =>
+              `<div class="round"><span>${esc(round.name)}</span><div>${round.matches
+                .map(
+                  (
+                    tie,
+                  ) => `<div class="tie"><small>${esc(tie.label)} · ${esc(tie.court)} · ${esc(shortTime(tie.time))}</small>
+                  ${side(tie.team1, tie.score1, tie.score1 != null && tie.score1 > tie.score2)}
+                  ${side(tie.team2, tie.score2, tie.score2 != null && tie.score2 > tie.score1)}</div>`,
+                )
+                .join('')}</div></div>`,
+          )
+          .join('')}</div></div>`;
+      }
+
+      function courtsPage() {
+        const line = (match) => `${teamLink(match.team1)} v ${teamLink(match.team2)}`;
+        return `<div class="scroller"><div class="grid courts">${(state.browse?.courts ?? [])
+          .map((court) => {
+            const live = court.playing != null;
+            const here = court.name === state.browse.court;
+            return `<div class="tile-button ${live ? 'live' : ''}" role="button" data-go="court:${esc(court.name)}">
+              <span class="kicker">Court ${esc(court.name)}${here ? ' · Here' : ''}${live ? ' · Live' : ''}</span>
+              <div style="margin-top:0.4rem">${live ? `${line(court.playing)}<div class="stat"><b>${court.playing.score1}–${court.playing.score2}</b></div>` : 'Nothing on now'}</div>
+              <small>${court.next ? `Next: ${line(court.next)}` : 'Nothing else today'}</small>
+            </div>`;
+          })
+          .join('')}</div></div>`;
+      }
+
+      function schedulePage() {
+        const rows = poolsOf()
+          .flatMap((pool) => pool.matches)
+          .concat(state.browse?.knockouts ?? [])
+          .filter((match) => match.state !== 'done')
+          .sort((a, b) => a.time.localeCompare(b.time));
+        return `<div class="scroller"><h2 class="h">Still to play</h2><div class="rows">${rows.map(matchRow).join('')}</div></div>`;
+      }
+
+      function drawBrowse() {
+        const onCourt = page == null || otherCourt() != null;
+        $('browse').hidden = onCourt;
+        $('show').hidden = !onCourt;
+        if (onCourt) {
+          // The next person starts at the top, not where the last one stopped reading.
+          $('browse').dataset.html = '';
+          $('browse').dataset.page = '';
+          return;
+        }
+        const [name, detail] = splitPage(page);
+        const scroller = $('browse').querySelector('.scroller');
+        const top = scroller?.scrollTop ?? 0;
+        const html = {
+          teams: teamsPage,
+          pools: () => poolPage(detail),
+          team: () => teamPage(detail),
+          bracket: () => bracketPage(detail),
+          courts: courtsPage,
+          schedule: schedulePage,
+        }[name]();
+        if ($('browse').dataset.html !== html) {
+          $('browse').innerHTML = html;
+          $('browse').dataset.html = html;
+          // A score changing mustn't throw someone back to the top of what they're reading.
+          const nowScroller = $('browse').querySelector('.scroller');
+          if (nowScroller != null && $('browse').dataset.page === page) nowScroller.scrollTop = top;
+        }
+        $('browse').dataset.page = page;
+      }
+
+      function splitPage(text) {
+        const at = text.indexOf(':');
+        return at < 0 ? [text, null] : [text.slice(0, at), text.slice(at + 1)];
+      }
+
+      /* ---------- The push-button tap: every touch fills it up again. ---------- */
+
+      function touched() {
+        if (browsing()) timerEnds = Date.now() + secondsAllowed * 1000;
+      }
+
+      function goTo(next, { remember = true } = {}) {
+        // This court's own screen is the main show.
+        if (next === `court:${state.browse?.court}`) {
+          goHome('went back to this court');
+          return;
+        }
+        if (remember && page != null) trail.push(page);
+        const opening = !browsing();
+        pickerOpen = false;
+        page = next;
+        touched();
+        if (opening) tell(`Monitor: someone is browsing (${secondsAllowed}s until it goes back)`);
+        drawAll();
+      }
+
+      function goHome(why) {
+        if (!browsing()) return;
+        page = null;
+        pickerOpen = false;
+        trail = [];
+        if (why) tell(`Monitor: ${why}`);
+        drawAll();
+      }
+
+      function drawHead() {
+        const { graphic, scoreboard } = state;
+        const live = graphic?.stage === 'SCORE' && scoreboard != null;
+        let middle;
+        if (page != null && live) {
+          middle = `<div class="liveline"><span class="tag">${esc(homeCourt())} LIVE</span>${teamLink(scoreboard.team1)}
+            <b>${scoreboard.score1}–${scoreboard.score2}</b>${teamLink(scoreboard.team2)}</div>`;
+        } else {
+          // The court on screen says its own pool, so this is only for the pages that don't.
+          const showsPool = page != null && otherCourt() == null && graphic?.pool;
+          middle = `<div class="where">${showsPool ? poolLink(graphic.pool) : ''}</div>`;
+        }
+        const name = courtName();
+        const goHomeButton =
+          otherCourt() != null
+            ? `<button class="poolpill homebutton" data-nav="show">Back to Court ${esc(homeCourt())}</button>`
+            : '';
+        const html = `<button class="court courtbutton ${pickerOpen ? 'open' : ''}" data-picker>${esc(name ? `Court ${name}` : 'Courts')}</button>${middle}${goHomeButton}<div class="clock" id="clock"></div>
+          ${browsing() ? '<div class="timebar" id="timebar"></div>' : ''}`;
+        if ($('head').dataset.html !== html) {
+          $('head').innerHTML = html;
+          $('head').dataset.html = html;
+        }
+      }
+
+      function drawNav() {
+        const [opened] = page == null ? ['show'] : splitPage(page);
+        // Any court is the same screen, so it's the same button.
+        const name = { team: 'teams', court: 'show' }[opened] ?? opened;
+        const html = PAGES.map(
+          ([id, label]) =>
+            `<button class="${name === id ? 'on' : ''}" data-nav="${id}">${esc(label)}</button>`,
+        ).join('');
+        if ($('nav').dataset.html !== html) {
+          $('nav').innerHTML = html;
+          $('nav').dataset.html = html;
+        }
+      }
+
+      function drawPicker() {
+        const box = $('picker');
+        box.hidden = !pickerOpen;
+        if (!pickerOpen) return;
+        const onScreen = courtName();
+        const html = `<div class="pickertop"><span class="h">Choose a court</span><button data-picker>Close</button></div>
+          <div class="pickergrid">${(state.browse?.courts ?? [])
+            .map((court) => {
+              const live = court.playing != null;
+              const about = live
+                ? `<b>${court.playing.score1}–${court.playing.score2}</b><small>${esc(court.playing.team1)} v ${esc(court.playing.team2)}</small>`
+                : `<small>${court.next ? `Next: ${esc(court.next.team1)} v ${esc(court.next.team2)}` : 'Nothing on now'}</small>`;
+              const tag = [court.name === homeCourt() ? 'Here' : null, live ? 'Live' : null]
+                .filter(Boolean)
+                .join(' · ');
+              return `<button class="pick ${court.name === onScreen ? 'on' : ''}" data-pick="${esc(court.name)}">
+                <span class="pickname">Court ${esc(court.name)}</span>
+                <span class="picktag">${tag || '&nbsp;'}</span>${about}</button>`;
+            })
+            .join('')}</div>`;
+        if (box.dataset.html !== html) {
+          box.innerHTML = html;
+          box.dataset.html = html;
+        }
+      }
+
+      /* Other courts' calls, newest first and two at most, so the screen stays a screen. It
+         never takes anyone away from what they're reading: that's only for this court's own. */
+      const CALLS_SHOWN = 2;
+      let callsSeen = new Set();
+      function drawCallBar() {
+        const bar = $('callbar');
+        const calls = (state.browse?.calls ?? [])
+          // A court already saying "Come to Court" on screen doesn't need telling twice.
+          .filter((call) => {
+            if (call.court === homeCourt()) return state.graphic?.stage !== 'INTRO';
+            return call.court !== otherCourt() || courtOnScreen().graphic?.stage !== 'INTRO';
+          })
+          .slice(0, CALLS_SHOWN);
+        const html = calls
+          .map(
+            (call) =>
+              `<button class="callrow" ${call.court === homeCourt() ? 'data-nav="show"' : `data-go="court:${esc(call.court)}"`} data-key="${esc(call.court)}:${call.calls}">Court ${esc(call.court)} is calling ${esc(call.team1)} v ${esc(call.team2)}</button>`,
+          )
+          .join('');
+        if (bar.dataset.html === html) return;
+        const wasHidden = bar.hidden;
+        bar.innerHTML = html;
+        bar.dataset.html = html;
+        bar.hidden = calls.length === 0;
+        // Only the new call flashes, not one that was already up.
+        const keys = calls.map((call) => `${call.court}:${call.calls}`);
+        bar.querySelectorAll('.callrow').forEach((row) => {
+          if (!callsSeen.has(row.dataset.key)) row.classList.add('flash');
+        });
+        callsSeen = new Set(keys);
+        // The room under it changed.
+        if (wasHidden !== bar.hidden || calls.length > 0) showNeedsFit = true;
+      }
+
+      /* What's been decided at the toss so far, in the order it was. A team's serve or receive
+         turns into the player's name, where it is, once they've said who starts. */
+      let wasTossing = false;
+      function drawTossSummary() {
+        const { graphic } = courtOnScreen();
+        const events = graphic?.toss_events ?? [];
+        const box = $('tosssummary');
+        box.hidden = events.length === 0;
+        $('sponsors').classList.toggle('summary', events.length > 0);
+        // The middle of the screen changes width with it, so its contents get sized again.
+        if (document.body.classList.toggle('tossing', events.length > 0) !== wasTossing) {
+          showNeedsFit = true;
+          wasTossing = !wasTossing;
+        }
+        if (events.length === 0) {
+          box.dataset.html = '';
+          return;
+        }
+        const teamOf = (side) => (side === 1 ? graphic.team1 : graphic.team2);
+        const decided = events.find((row) => row.choice === 'SERVE' || row.choice === 'RECEIVE');
+        const starterOf = (team) => events.find((row) => row.name && row.team === team);
+        const role = (team, one) => {
+          const serves = (decided.choice === 'SERVE') === (team === decided.team);
+          return `${serves ? 'serve' : 'receive'}${one ? 's' : ''} first`;
+        };
+        const line = (who, what) =>
+          `<div class="tossline"><strong>${esc(who)}</strong>${esc(what)}</div>`;
+        const lines = events.map((row) => {
+          if (row.caller) {
+            return line(
+              row.caller,
+              row.call ? `called ${row.call.toLowerCase()}` : 'is doing the toss',
+            );
+          }
+          if (row.won) {
+            return line(teamOf(row.won).name, `won the toss on ${row.result.toLowerCase()}`);
+          }
+          if (row.name) {
+            return row.team === decided.team ? '' : line(row.name, role(row.team, true));
+          }
+          const team = teamOf(row.team).name;
+          if (row.choice === 'DEFER') return line(team, 'deferred');
+          if (row.choice === 'SIDE') {
+            return line(team, `picked the ${row.end === 'BACK' ? 'second' : 'main'} entrance end`);
+          }
+          const starter = starterOf(row.team);
+          return starter
+            ? line(starter.name, role(row.team, true))
+            : line(team, role(row.team, false));
+        });
+        // A team without two players never says who starts.
+        if (decided && teamOf(3 - decided.team).players.length < 2) {
+          lines.push(line(teamOf(3 - decided.team).name, role(3 - decided.team, false)));
+        }
+        const html = `<div class="h">Coin toss</div>${lines.join('')}`;
+        if (box.dataset.html !== html) {
+          box.innerHTML = html;
+          box.dataset.html = html;
+        }
+      }
+
+      function drawAll() {
+        drawTossSummary();
+        drawCallBar();
+        drawPicker();
+        drawHead();
+        drawNav();
+        drawShow();
+        drawBrowse();
+        // It can only be measured while it's showing.
+        if (!$('show').hidden && showNeedsFit) {
+          showNeedsFit = false;
+          fitContent($('show'));
+        }
+        tick();
+      }
+
+      function tick() {
+        if (holding()) touched();
+        const now = new Date();
+        const clockEl = $('clock');
+        if (clockEl) {
+          const left = browsing() ? Math.ceil((timerEnds - Date.now()) / 1000) : null;
+          clockEl.textContent =
+            left == null
+              ? now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+              : holding()
+                ? 'Paused'
+                : `Back in ${Math.max(0, left)}s`;
+        }
+        if (!browsing()) return;
+        const bar = $('timebar');
+        const share = Math.max(0, (timerEnds - Date.now()) / (secondsAllowed * 1000));
+        if (bar) bar.style.width = `${share * 100}%`;
+        if (share <= 0) goHome('nobody touched it, went back to the court');
+      }
+      setInterval(tick, 200);
+
+      document.addEventListener('click', (event) => {
+        const signIn = event.target.closest('[data-signin]');
+        if (signIn) {
+          if (params.has('preview')) {
+            window.parent.postMessage({ signIn: Number(signIn.dataset.signin) }, location.origin);
+          } else {
+            signInHere(Number(signIn.dataset.signin));
+          }
+          return;
+        }
+        const pick = event.target.closest('[data-pick]');
+        if (pick) {
+          pickerOpen = false;
+          trail = [];
+          if (pick.dataset.pick === homeCourt() && page == null) drawAll();
+          else goTo(`court:${pick.dataset.pick}`, { remember: false });
+          return;
+        }
+        if (event.target.closest('[data-picker]')) {
+          if (pickerOpen) {
+            pickerOpen = false;
+          } else {
+            if (!browsing())
+              tell(`Monitor: someone is choosing a court (${secondsAllowed}s until it goes back)`);
+            pickerOpen = true;
+            touched();
+          }
+          drawAll();
+          return;
+        }
+        // Tapping beside the choices closes it.
+        if (pickerOpen && event.target.closest('#picker') && !event.target.closest('button')) {
+          pickerOpen = false;
+          drawAll();
+          return;
+        }
+        const nav = event.target.closest('[data-nav]');
+        if (nav) {
+          if (nav.dataset.nav === 'show') goHome('Now on court pressed');
+          else {
+            trail = [];
+            goTo(nav.dataset.nav, { remember: false });
+          }
+          return;
+        }
+        const go = event.target.closest('[data-go]');
+        if (go) {
+          goTo(go.dataset.go);
+          return;
+        }
+        const swap = event.target.closest('[data-swap]');
+        if (swap) {
+          goTo(swap.dataset.swap, { remember: false });
+          return;
+        }
+        if (event.target.closest('[data-back]')) {
+          const previous = trail.pop();
+          if (previous == null) goHome('Back pressed');
+          else goTo(previous, { remember: false });
+        }
+      });
+      for (const kind of ['pointerdown', 'touchmove', 'wheel', 'keydown']) {
+        document.addEventListener(kind, touched, { passive: true });
+      }
+      document.addEventListener('scroll', touched, { passive: true, capture: true });
+
+      /* A finger resting on the screen holds the timer. Lifting it starts the full count again.
+         Touches are counted from touch events, because a pointer is let go as soon as a finger
+         starts to scroll, and it's still being held then. */
+      let fingers = 0;
+      let mouseDown = false;
+      const holding = () => fingers > 0 || mouseDown;
+      const holdChanged = () => {
+        touched();
+        tick();
+      };
+      for (const kind of ['touchstart', 'touchend', 'touchcancel']) {
+        document.addEventListener(
+          kind,
+          (event) => {
+            fingers = event.touches.length;
+            holdChanged();
+          },
+          { passive: true },
+        );
+      }
+      document.addEventListener('mousedown', () => {
+        mouseDown = true;
+        holdChanged();
+      });
+      // Let go, or gone somewhere it can't be seen letting go.
+      for (const kind of ['mouseup', 'mouseleave']) {
+        document.addEventListener(kind, () => {
+          mouseDown = false;
+          holdChanged();
+        });
+      }
+      window.addEventListener('blur', () => {
+        mouseDown = false;
+        fingers = 0;
+        holdChanged();
+      });
+
+      /* ---------- What comes in. ---------- */
+
+      function receive(next) {
+        if (next.timerSeconds != null) {
+          secondsAllowed = next.timerSeconds;
+          touched();
+          return;
+        }
+        const courtBefore = homeCourt();
+        state = next;
+        if (courtBefore && homeCourt() !== courtBefore) goHome('it was moved to another court');
+        // Being called to this court can't wait for someone to finish reading.
+        // Calling again counts too: it's still somebody who hasn't come.
+        const call =
+          state.graphic?.stage === 'INTRO'
+            ? `${state.graphic.key}:${state.graphic.calls ?? 0}`
+            : null;
+        if (call != null && call !== lastCall) goHome('teams called, jumped back to the court');
+        lastCall = call;
+        drawAll();
+      }
+
+      document.querySelectorAll('.sponsor').forEach((box) => {
+        const image = new Image();
+        image.alt = 'Sponsor';
+        image.onload = () => box.replaceChildren(image);
+        image.src = box.dataset.image;
+      });
+
+      if (params.has('preview')) {
+        window.addEventListener('message', (event) => {
+          if (event.origin !== location.origin || event.source !== window.parent) return;
+          receive(event.data);
+        });
+      }
+      /* The real thing: each court's monitor has its court in its link, and asks the server.
+         It keeps what it has if the network drops, and carries on when it's back. An empty
+         bearer is what the browser sends when nobody is logged in; the API rejects a request
+         with no Authorization header at all. */
+      let TOURNAMENT = params.get('tournament');
+      let COURT = params.get('court');
+      const API_HEADERS = { Authorization: 'bearer ' };
+      const ASK_EVERY_MS = 1000;
+      let asking = false;
+
+      async function askServer() {
+        if (asking) return;
+        asking = true;
+        try {
+          const res = await fetch(`/api/tournaments/${TOURNAMENT}/court_screen/${COURT}`, {
+            headers: API_HEADERS,
+          });
+          if (res.ok) receive((await res.json()).data);
+        } catch {
+          // Tries again in a second.
+        }
+        asking = false;
+      }
+
+      async function signInHere(player) {
+        try {
+          await fetch(`/api/tournaments/${TOURNAMENT}/court_screen/${COURT}/sign_in`, {
+            method: 'POST',
+            headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_id: player }),
+          });
+        } catch {
+          // They can tap again, or the referee can tick them.
+        }
+        askServer();
+      }
+
+      const startAsking = () => {
+        askServer();
+        setInterval(askServer, ASK_EVERY_MS);
+      };
+
+      /* A board's own link has only its name. It registers itself, the organizer picks its
+         court on the Court monitors page, and a new pick takes effect by reloading. */
+      const NODE = params.get('node');
+      const NODE_ASK_EVERY_MS = 3000;
+      let assigned;
+
+      function showWaiting() {
+        const cover = document.createElement('div');
+        cover.id = 'waiting';
+        cover.style.cssText =
+          'position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2rem;background:#0b1530;color:#f4efe2;text-align:center;';
+        const name = document.createElement('div');
+        name.style.cssText = 'font-size:6rem;font-weight:800;';
+        name.textContent = NODE;
+        const note = document.createElement('div');
+        note.style.cssText = 'font-size:2.4rem;color:#d4af6a;';
+        note.textContent = 'Waiting for a court';
+        cover.append(name, note);
+        document.body.append(cover);
+      }
+
+      async function askNode() {
+        try {
+          const res = await fetch(`/api/monitor_nodes/${encodeURIComponent(NODE)}/check_in`, {
+            method: 'POST',
+            headers: API_HEADERS,
+          });
+          if (!res.ok) return;
+          const { tournament_id: tournament, court_id: court } = (await res.json()).data;
+          const now = court == null ? 'none' : `${tournament}/${court}`;
+          if (assigned == null) {
+            assigned = now;
+            if (court == null) return;
+            TOURNAMENT = tournament;
+            COURT = court;
+            document.getElementById('waiting')?.remove();
+            startAsking();
+          } else if (now !== assigned) {
+            location.reload();
+          }
+        } catch {
+          // Tries again soon.
+        }
+      }
+
+      /* On a board's own screen, a long hold in the top right corner goes back to its start
+         screen, to change the server. Long enough that nobody does it by accident. */
+      if (params.has('kiosk')) {
+        const HOLD_MS = 5000;
+        const CORNER = 160;
+        let hold;
+        const letGo = () => clearTimeout(hold);
+        window.addEventListener('contextmenu', (event) => event.preventDefault());
+        window.addEventListener('pointerdown', (event) => {
+          if (event.clientX < innerWidth - CORNER || event.clientY > CORNER) return;
+          hold = setTimeout(() => {
+            location.href = `http://127.0.0.1:8099/start.html?node=${encodeURIComponent(NODE)}&change=1`;
+          }, HOLD_MS);
+        });
+        window.addEventListener('pointerup', letGo);
+        window.addEventListener('pointercancel', letGo);
+      }
+
+      if (!params.has('preview')) {
+        if (NODE) {
+          showWaiting();
+          askNode();
+          setInterval(askNode, NODE_ASK_EVERY_MS);
+        } else if (TOURNAMENT && COURT) {
+          startAsking();
+        }
+      }
+
+      const refit = () => {
+        showNeedsFit = true;
+        drawAll();
+      };
+      window.addEventListener('resize', refit);
+      document.fonts?.ready.then(refit);
+      drawAll();
+    </script>
+  </body>
+</html>

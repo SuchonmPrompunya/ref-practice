@@ -1,0 +1,129 @@
+/* The signing page, shared by both referee layouts: the whole screen, with the two
+   boxes taking all the room left. */
+.signpage {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #fff;
+  color: #0b1530;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.signtop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.signback {
+  flex: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(30, 58, 138, 0.2);
+  background: #fff;
+  color: #0b1530;
+  cursor: pointer;
+}
+.signscore {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.signscore b {
+  font-size: 18px;
+  margin: 0 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.signpads {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.signteam {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.signhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.signname {
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.signclear {
+  flex: none;
+  font: inherit;
+  font-size: 14px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(30, 58, 138, 0.2);
+  background: #fff;
+  color: #0b1530;
+  cursor: pointer;
+}
+/* touch-action:none, or dragging a finger scrolls the page instead of drawing.
+   Height 0 and growing, so the canvas's own size can't push the page taller. */
+.signbox {
+  display: block;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: 0;
+  border-radius: 12px;
+  background: #f4f6fb;
+  border: 2px dashed rgba(30, 58, 138, 0.3);
+  box-sizing: border-box;
+  touch-action: none;
+  cursor: crosshair;
+}
+.signdone {
+  flex: none;
+  width: 100%;
+  min-height: 58px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1d3f86, #12306b);
+  color: #fff;
+  cursor: pointer;
+}
+.signdone:disabled {
+  opacity: 0.6;
+}
+/* A phone on its side: the boxes go side by side, and the bars stay slim. */
+@media (orientation: landscape) {
+  .signpads {
+    flex-direction: row;
+  }
+  .signdone {
+    min-height: 46px;
+    font-size: 18px;
+  }
+  .signback {
+    min-height: 38px;
+  }
+}
