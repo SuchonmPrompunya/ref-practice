@@ -360,11 +360,35 @@
         background: var(--navy);
         color: #fff;
       }
-      /* Too narrow for one line (a phone): the switch takes the second line, full width. */
+      .pswitch .short {
+        display: none;
+      }
+      /* A phone: still one line, without the title and with shorter words. */
       @media (max-width: 599px) {
+        .pbar {
+          flex-wrap: nowrap;
+          gap: 6px;
+          padding-left: 8px;
+          padding-right: 8px;
+        }
+        .pbar .ptitle {
+          display: none;
+        }
         .pswitch {
-          order: 1;
-          flex-basis: 100%;
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .pbar button,
+        .pswitch button {
+          padding: 0 8px;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+        .pswitch .long {
+          display: none;
+        }
+        .pswitch .short {
+          display: inline;
         }
       }
       .pscreen .frame {
@@ -463,9 +487,11 @@
         </div>
         <div class="pswitch" role="tablist">
           <button data-screen="monitor" class="on" onclick="showScreen('monitor')">
-            Court monitor
+            <span class="long">Court monitor</span><span class="short">Monitor</span>
           </button>
-          <button data-screen="live" onclick="showScreen('live')">Live viewers</button>
+          <button data-screen="live" onclick="showScreen('live')">
+            <span class="long">Live viewers</span><span class="short">Viewers</span>
+          </button>
         </div>
         <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
         <button onclick="startOver()">Start over</button>
