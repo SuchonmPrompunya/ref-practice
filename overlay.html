@@ -834,7 +834,7 @@
       <div class="grip" id="grip"></div>
     </div>
     <div class="graphic" id="graphic"></div>
-    <video class="wipe" id="wipe" src="overlay/stinger.webm" preload="auto" playsinline></video>
+    <video class="wipe" id="wipe" src="overlay/stinger.webm" preload="auto" muted playsinline></video>
 
     <script>
       const params = new URLSearchParams(location.search);
@@ -1292,11 +1292,8 @@
         endStinger = finish;
         wipe.addEventListener('ended', finish);
         wipe.classList.add('run');
-        // A page nobody has clicked on may not play sound: then without it.
-        wipe.play().catch(() => {
-          wipe.muted = true;
-          wipe.play().catch(finish);
-        });
+        // Silent, so it plays even on a page nobody has clicked on.
+        wipe.play().catch(finish);
       }
 
       // Loaded ahead, so the player cards are ready by the time the stinger reveals them.
