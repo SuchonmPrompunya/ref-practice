@@ -532,11 +532,11 @@
           <b>Ref practice</b>
         </div>
         <div class="pswitch" role="tablist">
-          <button data-screen="monitor" class="on" onclick="showScreen('monitor')">
-            <span class="long">Court monitor</span><span class="short">Monitor</span>
-          </button>
-          <button data-screen="live" onclick="showScreen('live')">
+          <button data-screen="live" class="on" onclick="showScreen('live')">
             <span class="long">Live viewers</span><span class="short">Viewers</span>
+          </button>
+          <button data-screen="monitor" onclick="showScreen('monitor')">
+            <span class="long">Court monitor</span><span class="short">Monitor</span>
           </button>
         </div>
         <button id="pSkip" onclick="skipToGamePoint()" disabled>Game point</button>
@@ -1852,7 +1852,7 @@
         setView(true, true);
         $('pScreen').append($('liveBox'), $('monitorBox'));
         $('pRef').append(document.querySelector('#pair .phone'));
-        showScreen('monitor');
+        showScreen('live');
         const followRef = update;
         update = function () {
           followRef();
