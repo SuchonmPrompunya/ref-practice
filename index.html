@@ -110,6 +110,18 @@
         border: 0;
         background: transparent;
       }
+      /* Drawn at the stream's real size and shrunk to fit (see fitFrames), so it looks as
+         it does in OBS. Drawn small, a phone would enlarge the smallest text to its
+         minimum size and the graphic would come out wrong. */
+      .frame > iframe {
+        inset: auto;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: 0 0;
+        transform: scale(var(--fit, 0.2));
+      }
       .play {
         margin-top: 8px;
       }
@@ -914,6 +926,23 @@
       ];
       const stageInfo = (stage) => STAGES.find((row) => row.stage === stage);
       const $ = (id) => document.getElementById(id);
+
+      // Each 1920×1080 screen shrinks to the width of its box, now and whenever it changes.
+      const fitting = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const width = entry.target.clientWidth;
+          if (width) entry.target.style.setProperty('--fit', width / 1920);
+        }
+      });
+      function fitFrames(root = document) {
+        root.querySelectorAll?.('.frame').forEach((box) => fitting.observe(box));
+        if (root.classList?.contains('frame')) fitting.observe(root);
+      }
+      fitFrames();
+      new MutationObserver((changes) => {
+        for (const change of changes) change.addedNodes.forEach((node) => fitFrames(node));
+      }).observe(document.body, { childList: true, subtree: true });
+
       const person = (name, dupr, age, photo = null) => ({ name, dupr, age, photo });
       const pair = (name, players) => ({
         name,
