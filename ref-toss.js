@@ -1,9 +1,9 @@
-/* The players set the match up themselves, shared by both referee layouts. The referee
-   stands at the side of the court and turns the phone out to them: one presses their
-   name and calls the coin, then the teams make their picks as USAP 5.A has it. The
+/* The referee runs the toss with the players, shared by both referee layouts. Players
+   never see the phone: the referee asks and taps. One player calls the coin, then the
+   teams make their picks as USAP 5.A has it. The
    winner picks serve, receive or an end, or defers. The other team takes what's left
-   of that pair, and deferring hands them the first pick. Then the phone goes back to
-   the referee, on the usual setup screen with everything filled in. The stream shows
+   of that pair, and deferring hands them the first pick. Then it's back to the
+   usual setup screen with everything filled in. The stream shows
    each step as it happens, and moves on to the player cards at that handover.
 
    Ref setup skips all this. The choice is kept on this phone. */
@@ -338,7 +338,7 @@ function tossSummary() {
     const team = tossTeam(row.team);
     if (row.choice === 'DEFER') return line(team, 'deferred');
     if (row.choice === 'SIDE') {
-      return line(team, `picked the ${row.end === 'FRONT' ? 'main' : 'second'} entrance end`);
+      return line(team, `picked the ${row.end === 'FRONT' ? 'right' : 'left'} end`);
     }
     const starter = starterOf(row.team);
     return starter ? line(starter.name, role(row.team, true)) : line(team, role(row.team, false));
@@ -373,7 +373,7 @@ function tossChoices() {
   if (taken === 'SIDE') return serveOrReceive;
   if (taken) return end;
   return (
-    serveOrReceive + end + (tossing.deferred ? '' : button('DEFER', 'Defer: let them pick first'))
+    serveOrReceive + end + (tossing.deferred ? '' : button('DEFER', 'Defer: other team picks first'))
   );
 }
 
@@ -406,7 +406,7 @@ function tossScreen() {
           <button class="tossbig" onclick="playersHere()">They're already here</button>`;
     }
     case 'call':
-      return `<h1>Press your name</h1><p class="tosshint">You'll call the coin.</p>
+      return `<h1>Who calls the coin?</h1><p class="tosshint">Tap the player calling it.</p>
         ${[1, 2]
           .map(
             (team) => `<div class="tossgroup"><h2>${esc(tossTeam(team))}</h2>
@@ -414,7 +414,7 @@ function tossScreen() {
           )
           .join('')}`;
     case 'face':
-      return `<h1>${esc(tossing.name)}, heads or tails?</h1>
+      return `<h1>What does ${esc(tossing.name)} call?</h1>
         <div class="tossfaces">
           <button class="tossface" onclick="tossCall('HEADS')"><span class="tosscoin">H</span>Heads</button>
           <button class="tossface" onclick="tossCall('TAILS')"><span class="tosscoin">T</span>Tails</button>
@@ -426,16 +426,16 @@ function tossScreen() {
       return `<h1>${tossing.result === 'HEADS' ? 'Heads' : 'Tails'}!</h1>
         <div class="tossfaces"><span class="tosscoin huge">${tossing.result === 'HEADS' ? 'H' : 'T'}</span></div>
         <p class="tosswin">${esc(tossTeam(tossWinner()))} won the toss</p>
-        <button class="tossgo" onclick="tossChoose()">${esc(tossTeam(tossWinner()))} choose</button>`;
+        <button class="tossgo" onclick="tossChoose()">${esc(tossTeam(tossWinner()))} picks</button>`;
     case 'choose':
       return `<h1>${esc(tossTeam(chooser))}</h1>
-        <p class="tosshint">${tossing.picks.length ? "You take what's left." : 'You choose first.'}</p>
+        <p class="tosshint">${tossing.picks.length ? "They take what's left." : 'What do they pick first?'}</p>
         ${tossChoices()}`;
     case 'end':
-      return `<h1>${esc(tossTeam(chooser))}</h1><p class="tosshint">Which end do you want?</p>
+      return `<h1>${esc(tossTeam(chooser))}</h1><p class="tosshint">Which end do they want?</p>
         <div class="tossfaces">
-          <button class="tossbig" onclick="tossEnd('FRONT')">Main entrance</button>
-          <button class="tossbig" onclick="tossEnd('BACK')">Second entrance</button>
+          <button class="tossbig" onclick="tossEnd('BACK')">Left end</button>
+          <button class="tossbig" onclick="tossEnd('FRONT')">Right end</button>
         </div>`;
     case 'right': {
       const serves = tossing.rightTeam === tossServing();
@@ -444,8 +444,8 @@ function tossScreen() {
         ${tossNames(tossing.rightTeam, (id) => `tossRight(${id})`)}`;
     }
     default:
-      return `<h1>Turn the phone back to the ref</h1>
-        <button class="tossgo" onclick="tossHandBack()">Ref: check the court</button>`;
+      return `<h1>All picked</h1>
+        <button class="tossgo" onclick="tossHandBack()">Check the court</button>`;
   }
 }
 

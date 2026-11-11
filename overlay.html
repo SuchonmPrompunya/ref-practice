@@ -1124,7 +1124,7 @@
           const { team, choice, end } = toss.picks.at(-1);
           const say =
             choice === 'SIDE'
-              ? `chose the ${end === 'BACK' ? 'second' : 'main'} entrance end`
+              ? `chose the ${end === 'BACK' ? 'left' : 'right'} end`
               : TOSS_PICKS[choice];
           return tvMoment(teamOf(team).players, teamOf(team).name, say);
         }

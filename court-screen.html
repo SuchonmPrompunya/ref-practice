@@ -1490,7 +1490,7 @@
           const { team, choice, end } = toss.picks.at(-1);
           const say =
             choice === 'SIDE'
-              ? `chose the ${end === 'BACK' ? 'second' : 'main'} entrance end`
+              ? `chose the ${end === 'BACK' ? 'left' : 'right'} end`
               : TOSS_PICKS[choice];
           return moment(team, teamOf(team).players, teamOf(team).name, say);
         }
@@ -1553,10 +1553,10 @@
             <div class="scorepool kicker">${board.best_of > 1 ? `Game ${board.game_number} · ` : ''}${poolLink(graphic.pool)}</div>
           </div>
           ${half(3 - top, 'bottom')}
-          <div class="scoreend top">Second entrance</div>
+          <div class="scoreend top">Left end</div>
           ${tile(top, 'top')}
           ${tile(3 - top, 'bottom')}
-          <div class="scoreend bottom">Main entrance</div>
+          <div class="scoreend bottom">Right end</div>
         </div>`;
       }
 
@@ -2259,7 +2259,7 @@
           const team = teamOf(row.team).name;
           if (row.choice === 'DEFER') return line(team, 'deferred');
           if (row.choice === 'SIDE') {
-            return line(team, `picked the ${row.end === 'BACK' ? 'second' : 'main'} entrance end`);
+            return line(team, `picked the ${row.end === 'BACK' ? 'left' : 'right'} end`);
           }
           const starter = starterOf(row.team);
           return starter
