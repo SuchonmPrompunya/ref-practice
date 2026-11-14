@@ -1317,6 +1317,8 @@
       let trail = [];
       let secondsAllowed = 20;
       let timerEnds = 0;
+      // Whether the server has answered yet: until then, nothing is known about the matches.
+      let heard = false;
       let lastCall = null;
       let flashedCall = null;
       let pickerOpen = false;
@@ -1587,6 +1589,7 @@
       }
 
       function showHtml(graphic, scoreboard) {
+        if (graphic == null && !heard) return '<div class="kicker">Connecting…</div>';
         if (graphic == null) {
           const sponsors = ['sponsor-1.png', 'sponsor-2.png', 'sponsor-3.png'];
           return `<div class="bigsponsors">${sponsors
@@ -2108,7 +2111,7 @@
       /* ---------- The push-button tap: every touch fills it up again. ---------- */
 
       function touched() {
-        if (browsing()) timerEnds = Date.now() + secondsAllowed * 1000;
+        if (browsing()) timerEnds = performance.now() + secondsAllowed * 1000;
       }
 
       function goTo(next, { remember = true } = {}) {
@@ -2295,14 +2298,23 @@
         }
       }
 
+      // One part that can't draw (odd data) mustn't stop the rest, the score least of all.
+      function drawSafely(draw) {
+        try {
+          draw();
+        } catch (error) {
+          console.error(`${draw.name} failed`, error);
+        }
+      }
+
       function drawAll() {
-        drawTossSummary();
-        drawCallBar();
-        drawPicker();
-        drawHead();
-        drawNav();
-        drawShow();
-        drawBrowse();
+        drawSafely(drawTossSummary);
+        drawSafely(drawCallBar);
+        drawSafely(drawPicker);
+        drawSafely(drawHead);
+        drawSafely(drawNav);
+        drawSafely(drawShow);
+        drawSafely(drawBrowse);
         // It can only be measured while it's showing.
         if (!$('show').hidden && showNeedsFit) {
           showNeedsFit = false;
@@ -2316,7 +2328,7 @@
         const now = new Date();
         const clockEl = $('clock');
         if (clockEl) {
-          const left = browsing() ? Math.ceil((timerEnds - Date.now()) / 1000) : null;
+          const left = browsing() ? Math.ceil((timerEnds - performance.now()) / 1000) : null;
           clockEl.textContent =
             left == null
               ? now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -2326,7 +2338,7 @@
         }
         if (!browsing()) return;
         const bar = $('timebar');
-        const share = Math.max(0, (timerEnds - Date.now()) / (secondsAllowed * 1000));
+        const share = Math.max(0, (timerEnds - performance.now()) / (secondsAllowed * 1000));
         if (bar) bar.style.width = `${share * 100}%`;
         if (share <= 0) goHome('nobody touched it, went back to the court');
       }
@@ -2408,9 +2420,9 @@
       // counts for a minute at most after the last touch.
       const HOLD_LASTS_MS = 60000;
       let lastHoldAt = 0;
-      const holding = () => (fingers > 0 || mouseDown) && Date.now() - lastHoldAt < HOLD_LASTS_MS;
+      const holding = () => (fingers > 0 || mouseDown) && performance.now() - lastHoldAt < HOLD_LASTS_MS;
       const holdChanged = () => {
-        lastHoldAt = Date.now();
+        lastHoldAt = performance.now();
         touched();
         tick();
       };
@@ -2496,9 +2508,12 @@
             headers: API_HEADERS,
             signal: AbortSignal.timeout(5000),
           });
+          lastAnswerAt = performance.now();
           if (res.ok) {
-            receive((await res.json()).data);
-            lastGoodAt = Date.now();
+            const data = (await res.json()).data;
+            lastGoodAt = performance.now();
+            heard = true;
+            receive(data);
           }
         } catch {
           // Tries again in a second.
@@ -2507,10 +2522,14 @@
       }
 
       /* Keeping itself going, with nobody there to look after it. */
-      const LOADED_AT = Date.now();
-      let lastGoodAt = Date.now();
-      // Updates stop for this long: reload, but only if the server answers, or the
-      // browser's own "can't reach" page would be left up for good.
+      let LOADED_AT = performance.now();
+      // The last answer with news in it, and the last answer of any kind.
+      let lastGoodAt = performance.now();
+      let lastAnswerAt = performance.now();
+      // No answer at all for this long: reload, but only if the server answers, or the
+      // browser's own "can't reach" page would be left up for good. An error answer (the
+      // dashboard made private, a court removed) isn't fixed by reloading: the page keeps
+      // asking and picks up again by itself once it's sorted.
       const STALE_RELOAD_MS = 15000;
       // A fresh start this often, so a board always runs the latest page.
       const FRESH_RELOAD_MS = 30 * 60 * 1000;
@@ -2528,19 +2547,24 @@
       }
 
       async function lookAfterItself() {
-        const quiet = Date.now() - lastGoodAt;
+        const quiet = performance.now() - lastGoodAt;
         document.getElementById('offline').hidden = quiet < 5000;
 
-        const stale = quiet > STALE_RELOAD_MS;
+        const stale = performance.now() - lastAnswerAt > STALE_RELOAD_MS;
         // Not in the middle of somebody browsing, or of a score being followed live.
         const due =
-          Date.now() - LOADED_AT > FRESH_RELOAD_MS &&
+          performance.now() - LOADED_AT > FRESH_RELOAD_MS &&
           !browsing() &&
           state.graphic?.stage !== 'SCORE';
-        if ((stale || due) && (await serverAnswers())) location.reload();
+        if (!(stale || due) || !(await serverAnswers())) return;
+        // Boards that all lost the server together don't all come back at the same moment.
+        if (stale) await new Promise((done) => setTimeout(done, Math.random() * 10000));
+        location.reload();
       }
 
       const startAsking = () => {
+        // A board can wait a long time for a court: its clocks start now.
+        LOADED_AT = lastGoodAt = lastAnswerAt = performance.now();
         askServer();
         setInterval(askServer, ASK_EVERY_MS);
         setInterval(lookAfterItself, 5000);
@@ -2609,7 +2633,7 @@
             headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               showing: describeScreen().slice(0, 200),
-              behind_seconds: COURT == null ? null : (Date.now() - lastGoodAt) / 1000,
+              behind_seconds: COURT == null ? null : (performance.now() - lastGoodAt) / 1000,
             }),
             signal: AbortSignal.timeout(5000),
           });
