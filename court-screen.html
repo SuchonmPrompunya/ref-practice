@@ -1261,8 +1261,26 @@
         font-size: 3.4rem;
       }
     </style>
+    <style>
+      #offline {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 100;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #e11d48;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85);
+      }
+      #offline[hidden] {
+        display: none;
+      }
+    </style>
   </head>
   <body>
+    <!-- Shown when the server hasn't answered for a few seconds. -->
+    <div id="offline" hidden title="Not reaching the server"></div>
     <div class="sponsors" id="sponsors" aria-label="Sponsors">
       <div id="tosssummary" hidden></div>
       <div class="sponsor" data-image="sponsor-1.png">Sponsor</div>
@@ -2385,8 +2403,14 @@
          starts to scroll, and it's still being held then. */
       let fingers = 0;
       let mouseDown = false;
-      const holding = () => fingers > 0 || mouseDown;
+      // A touch screen can lose the let-go, which would hold the
+      // timer for ever and leave the monitor on whatever page was last tapped. A hold
+      // counts for a minute at most after the last touch.
+      const HOLD_LASTS_MS = 60000;
+      let lastHoldAt = 0;
+      const holding = () => (fingers > 0 || mouseDown) && Date.now() - lastHoldAt < HOLD_LASTS_MS;
       const holdChanged = () => {
+        lastHoldAt = Date.now();
         touched();
         tick();
       };
@@ -2466,15 +2490,61 @@
         if (asking) return;
         asking = true;
         try {
+          // A request lost on bad Wi-Fi can hang for minutes, and nothing else is asked
+          // while it does: give up after 5 s so the next second asks again.
           const res = await fetch(`/api/tournaments/${TOURNAMENT}/court_screen/${COURT}`, {
             headers: API_HEADERS,
+            signal: AbortSignal.timeout(5000),
           });
-          if (res.ok) receive((await res.json()).data);
+          if (res.ok) {
+            receive((await res.json()).data);
+            lastGoodAt = Date.now();
+          }
         } catch {
           // Tries again in a second.
         }
         asking = false;
       }
+
+      /* Keeping itself going, with nobody there to look after it. */
+      const LOADED_AT = Date.now();
+      let lastGoodAt = Date.now();
+      // Updates stop for this long: reload, but only if the server answers, or the
+      // browser's own "can't reach" page would be left up for good.
+      const STALE_RELOAD_MS = 15000;
+      // A fresh start this often, so a board always runs the latest page.
+      const FRESH_RELOAD_MS = 30 * 60 * 1000;
+
+      async function serverAnswers() {
+        try {
+          const res = await fetch('/api/ping', {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(5000),
+          });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      async function lookAfterItself() {
+        const quiet = Date.now() - lastGoodAt;
+        document.getElementById('offline').hidden = quiet < 5000;
+
+        const stale = quiet > STALE_RELOAD_MS;
+        // Not in the middle of somebody browsing, or of a score being followed live.
+        const due =
+          Date.now() - LOADED_AT > FRESH_RELOAD_MS &&
+          !browsing() &&
+          state.graphic?.stage !== 'SCORE';
+        if ((stale || due) && (await serverAnswers())) location.reload();
+      }
+
+      const startAsking = () => {
+        askServer();
+        setInterval(askServer, ASK_EVERY_MS);
+        setInterval(lookAfterItself, 5000);
+      };
 
       async function signInHere(player) {
         try {
@@ -2488,11 +2558,6 @@
         }
         askServer();
       }
-
-      const startAsking = () => {
-        askServer();
-        setInterval(askServer, ASK_EVERY_MS);
-      };
 
       /* A board's own link has only its name. It registers itself, the organizer picks its
          court on the Court monitors page, and a new pick takes effect by reloading. */
@@ -2515,14 +2580,46 @@
         document.body.append(cover);
       }
 
+      // What's on this screen, in words, for the Court monitors page.
+      const STAGE_WORDS = {
+        INTRO: 'Calling',
+        TOSS: 'Coin toss',
+        PLAYERS: 'Players',
+        SCORE: 'Playing',
+        RESULT: 'Result',
+        UP_NEXT: 'Up next',
+      };
+      function describeScreen() {
+        if (COURT == null) return 'Waiting for a court';
+        if (browsing()) return 'Someone is browsing';
+        const graphic = state.graphic;
+        if (graphic == null) return 'Nothing on court';
+        const stage = STAGE_WORDS[graphic.stage] ?? graphic.stage;
+        const score =
+          graphic.stage === 'SCORE' && state.scoreboard
+            ? ` ${state.scoreboard.score1}–${state.scoreboard.score2}`
+            : '';
+        return `${stage}: ${graphic.team1?.name ?? '?'} v ${graphic.team2?.name ?? '?'}${score}`;
+      }
+
       async function askNode() {
         try {
           const res = await fetch(`/api/monitor_nodes/${encodeURIComponent(NODE)}/check_in`, {
             method: 'POST',
-            headers: API_HEADERS,
+            headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              showing: describeScreen().slice(0, 200),
+              behind_seconds: COURT == null ? null : (Date.now() - lastGoodAt) / 1000,
+            }),
+            signal: AbortSignal.timeout(5000),
           });
           if (!res.ok) return;
-          const { tournament_id: tournament, court_id: court } = (await res.json()).data;
+          const { tournament_id: tournament, court_id: court, reload } = (await res.json()).data;
+          // Reload pressed on the Court monitors page.
+          if (reload) {
+            location.reload();
+            return;
+          }
           const now = court == null ? 'none' : `${tournament}/${court}`;
           if (assigned == null) {
             assigned = now;

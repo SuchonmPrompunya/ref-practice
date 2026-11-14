@@ -764,7 +764,7 @@
         },
         {
           name: 'Match result',
-          when: 'The ref finishes the match.',
+          when: 'The ref finishes the match. Up for a minute, or until signed.',
           state: {
             scoreboard: null,
             graphic: graphic('RESULT', {
@@ -775,7 +775,7 @@
         },
         {
           name: 'Up next and order of play',
-          when: 'Before the first match, and each time signing is completed.',
+          when: 'Before the first match, after signing, or a minute after an unsigned result.',
           state: {
             scoreboard: null,
             graphic: graphic('UP_NEXT', {
@@ -916,13 +916,17 @@
         {
           stage: 'UP_NEXT',
           name: 'Up next',
-          cause: 'Before the first match, or signing completed',
+          cause: 'Before the first match, after signing, or a minute after the result',
         },
         { stage: 'INTRO', name: 'Match intro', cause: 'Ref called the players' },
         { stage: 'TOSS', name: 'Coin toss', cause: 'A player pressed their name' },
         { stage: 'PLAYERS', name: 'Player cards', cause: 'Phone back with the ref' },
         { stage: 'SCORE', name: 'Scoreboard', cause: 'Ref started the match' },
-        { stage: 'RESULT', name: 'Match result', cause: 'Ref finished the match' },
+        {
+          stage: 'RESULT',
+          name: 'Match result',
+          cause: 'Ref finished the match (1 minute, or until signed)',
+        },
       ];
       const stageInfo = (stage) => STAGES.find((row) => row.stage === stage);
       const $ = (id) => document.getElementById(id);
@@ -1012,6 +1016,7 @@
             completed: false,
             signatures: [],
             savedAt: 0,
+            savedTime: 0,
           };
         }
         sim = {
@@ -1061,6 +1066,7 @@
           `ref.html?tournament=demo&court=${COURT_NAMES.indexOf(refCourt) + 1}&sandbox=1${resume ? `&resume=${resume}` : ''}`;
       }
 
+      const RESULT_SHOWN_MS = 60000;
       const isFinished = (live) => live.scoring?.status === 'FINISHED';
 
       // Where one court has got to: which stage, and which of its matches.
@@ -1068,7 +1074,10 @@
         const line = matches.map((match, index) => ({ index, live: sim.live[match.id] }));
         const pick = (stage, row) => ({ stage, index: row.index });
 
-        const playing = line.find((row) => row.live.scoring?.status === 'IN_PROGRESS');
+        // Two under way means one was left behind: the one scored last is the real one.
+        const playing = line
+          .filter((row) => row.live.scoring?.status === 'IN_PROGRESS')
+          .reduce((a, b) => (a && a.live.savedAt >= b.live.savedAt ? a : b), null);
         if (playing) return pick('SCORE', playing);
         const waiting = line.filter((row) => !isFinished(row.live));
         const tossing = waiting.find((row) => row.live.tossLive);
@@ -1081,7 +1090,9 @@
         const refereed = line.filter((row) => isFinished(row.live));
         if (refereed.length) {
           const latest = refereed.reduce((a, b) => (b.live.savedAt > a.live.savedAt ? b : a));
-          if (!latest.live.completed) return pick('RESULT', latest);
+          // Unsigned, the result stays up for a minute, then gives way to what's next.
+          const shownLongEnough = Date.now() - latest.live.savedTime >= RESULT_SHOWN_MS;
+          if (!latest.live.completed && !shownLongEnough) return pick('RESULT', latest);
         }
         if (waiting.length) return pick('UP_NEXT', waiting[0]);
         return { stage: null, index: 0 };
@@ -1135,6 +1146,7 @@
         live.scoring = { ...live.scoring, ...body };
         live.history.push(copy(live.scoring));
         live.savedAt = ++sim.clock;
+        live.savedTime = Date.now();
       }
 
       const newScoring = (match, serving, serverAnchor, receiverAnchor) => ({
@@ -1254,6 +1266,7 @@
             live.signatures = [];
             live.completed = false;
             live.savedAt = ++sim.clock;
+            live.savedTime = Date.now();
             addLog('Ref pressed Undo');
             return ok({ data: live.scoring });
           case 'GET signatures':
@@ -1889,6 +1902,13 @@
         };
         update();
       }
+
+      // An unsigned result runs out by itself, with nobody pressing anything.
+      setInterval(() => {
+        const before = `${sim.stage}:${sim.index}`;
+        findStage();
+        if (`${sim.stage}:${sim.index}` !== before) update();
+      }, 1000);
 
       startPractice();
     </script>

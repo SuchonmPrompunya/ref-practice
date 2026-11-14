@@ -1088,6 +1088,7 @@
       /* Setup, before Start is pressed. The referee is the only one who can know any
    of this — it's decided by a spin at the net. */
       let setup = null; // {servingTeam, serverAnchorId, receiverAnchorId}
+      let resetup = false; // the setup screen is back for a game that has started
       let whoOpen = false;
       let serverAnchorId = null,
         receiverAnchorId = null,
@@ -1734,9 +1735,10 @@
 
       function photoUrl(photo) {
         // A path is one of overlay-preview.html's samples, not a player's uploaded file.
+        // Faces are small, so the server's 400px copy: ~30 KB rather than ~0.5-1 MB.
         return photo.startsWith('/')
           ? photo
-          : `/api/static/player-photos/${encodeURIComponent(photo)}`;
+          : `/api/static/player-photos/${encodeURIComponent(`${photo}.thumb.webp`)}`;
       }
       /* A round face: the player's photo, or their initials if there's no photo or it
    fails to load. The initials stay hidden while a photo loads, or their colour
@@ -1884,6 +1886,14 @@
         fixing = false;
         coin = null;
         undoSteps = m.undo_steps || 0;
+        // A match not started yet starts blank, not with the last match's score still
+        // held here (Start would take that for its next game and save it).
+        games = [];
+        s1 = 0;
+        s2 = 0;
+        matchOver = false;
+        gameOver = false;
+        resetup = false;
 
         try {
           // Already under way? Pick it up where it was left.
@@ -1961,10 +1971,23 @@
         render();
       }
 
+      /* Started with the wrong serve, sides or ends: until the first point, the setup
+         screen comes back as it was, and Start saves the new one over it. */
+      function backToSetup() {
+        setup = {
+          servingTeam: firstServer,
+          serverAnchorId: serverAnchorId,
+          receiverAnchorId: receiverAnchorId,
+        };
+        resetup = true;
+        render();
+      }
+
       async function startGame() {
-        // A later game. The server keeps what it has when a match that's under way is
-        // started again, so this game's serve goes up like any other change.
-        if (games.length) {
+        // A later game, or one set up again. The server keeps what it has when a match
+        // that's under way is started again, so the serve goes up like any other change.
+        if (games.length || resetup) {
+          resetup = false;
           serving = setup.servingTeam;
           firstServer = setup.servingTeam;
           serverNum = match.scoring_type === 'SIDEOUT' && !isSingles() ? 2 : 1;
@@ -2157,7 +2180,7 @@
 
         app.innerHTML = `
     ${matchHead('')}
-    ${games.length || match.toss ? '' : COIN_BUTTON}
+    ${games.length || match.toss || resetup ? '' : COIN_BUTTON}
     <p class="muted" style="margin:0 0 12px">
       Whoever is on the right serves or receives first. Tap a team's side to swap its
       two players between left and right; Other team serves moves the ball across;
@@ -2184,7 +2207,7 @@
       Switch ends until each team is drawn at the end it's really at.</p>
     <div class="actions">
       ${games.length && undoSteps > 0 ? `<button onclick="undo()">${ICON_UNDO}Undo</button>` : ''}
-      ${games.length || match.toss ? '' : `<button onclick="openToss()">Players set up</button>`}
+      ${games.length || match.toss || resetup ? '' : `<button onclick="openToss()">Players set up</button>`}
       <button class="primary" onclick="startGame()">Start</button>
     </div>
     <div class="err">${esc(error)}</div>`;
@@ -2281,6 +2304,11 @@
       ${
         knowPositions && !matchOver
           ? `<button class="ghost" onclick="fixing=!fixing; render()">${fixing ? 'Stop fixing sides' : 'Fix player sides'}</button>`
+          : ''
+      }
+      ${
+        !matchOver && !s1 && !s2
+          ? `<button class="ghost" onclick="backToSetup()">Back to setup</button>`
           : ''
       }
       <button class="ghost" onclick="toggleTypeIn()">${typing ? 'Hide' : 'Type the final score instead'}</button>
