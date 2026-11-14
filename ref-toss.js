@@ -6,12 +6,14 @@
    usual setup screen with everything filled in. The stream shows
    each step as it happens, and moves on to the player cards at that handover.
 
-   Ref setup skips all this. The choice is kept on this phone. */
-const TOSS_BY_REF_KEY = 'ref.setup.byRef';
+   Ref setup skips all this, for that match only: the next one starts with the toss again. */
 let tossing = null; // { step, caller, name, call, result, chooser, deferred, picks, end, right }
 
-function setupByRef() {
-  return localStorage.getItem(TOSS_BY_REF_KEY) === '1';
+// Phones used to remember Ref setup for every match after. Forget it.
+try {
+  localStorage.removeItem('ref.setup.byRef');
+} catch {
+  // Nothing was kept.
 }
 
 /* A match not started yet. A toss already recorded isn't tossed again. Everything else
@@ -100,12 +102,7 @@ function arrivalNames(team) {
 
 /* With the players here, or already standing there, so never called. */
 function playersHere() {
-  if (setupByRef()) {
-    closeToss();
-    render();
-  } else {
-    openToss();
-  }
+  openToss();
 }
 
 function tossServes(team) {
@@ -113,7 +110,6 @@ function tossServes(team) {
 }
 
 function openToss() {
-  localStorage.removeItem(TOSS_BY_REF_KEY);
   tossing = { step: 'call', picks: [], made: [], starters: [], right: {}, events: [] };
   tossShowLive(null);
   renderToss();
@@ -125,7 +121,6 @@ function closeToss() {
 }
 
 function tossToRef() {
-  localStorage.setItem(TOSS_BY_REF_KEY, '1');
   tossShowLive(null);
   closeToss();
   render();
